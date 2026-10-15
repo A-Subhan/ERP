@@ -1,7 +1,7 @@
 /* ===========================================================================
  * Auth service — login, logout, change password, current user.
+ * Plain-text password storage per change request #2 — no hashing, no argon2.
  * ==========================================================================*/
-import argon2 from 'argon2';
 import { getPool, sql } from '../db/pool';
 import { audit } from '../utils/audit';
 
@@ -20,8 +20,8 @@ export async function login(username: string, password: string, ip: string | nul
   const r = await pool.request()
     .input('uname', sql.NVarChar, username)
     .query(`
-      SELECT id, display_id, username, full_name, password_hash, is_active, is_admin,
-             force_change_pw, failed_login_count, locked_until
+      SELECT id, display_id, username, full_name, password, is_active, is_admin,
+             failed_login_count, locked_until
       FROM dbo.users
       WHERE username = @uname
     `);
@@ -38,10 +38,8 @@ export async function login(username: string, password: string, ip: string | nul
     return { ok: false, error: 'This account is temporarily locked. Try again later.' };
   }
 
-  let valid = false;
-  try {
-    valid = await argon2.verify(u.password_hash, password);
-  } catch (_) { valid = false; }
+  // Plain-text comparison per change request #2.
+  const valid = (password === u.password);
 
   if (!valid) {
     const nextFailed = u.failed_login_count + 1;
@@ -58,7 +56,6 @@ export async function login(username: string, password: string, ip: string | nul
     return { ok: false, error: 'Username or password is not correct.' };
   }
 
-  // Success — reset counters
   await pool.request()
     .input('uid', sql.Int, u.id)
     .input('now', sql.DateTime2, new Date())
@@ -68,7 +65,6 @@ export async function login(username: string, password: string, ip: string | nul
 
   return {
     ok: true,
-    needsPasswordChange: !!u.force_change_pw,
     user: { id: u.id, username: u.username, fullName: u.full_name, isAdmin: !!u.is_admin },
   };
 }
@@ -81,36 +77,29 @@ export async function changePassword(userId: number, oldPassword: string, newPas
   const pool = await getPool();
   const r = await pool.request()
     .input('uid', sql.Int, userId)
-    .query(`SELECT password_hash FROM dbo.users WHERE id = @uid`);
+    .query(`SELECT password FROM dbo.users WHERE id = @uid`);
   if (r.recordset.length === 0) return { ok: false, error: 'User not found.' };
-  const u = r.recordset[0];
-  let valid = false;
-  try { valid = await argon2.verify(u.password_hash, oldPassword); } catch (_) { valid = false; }
-  if (!valid) return { ok: false, error: 'Current password is not correct.' };
-  if (!newPassword || newPassword.length < 8) {
-    return { ok: false, error: 'New password must be at least 8 characters.' };
-  }
-  const newHash = await argon2.hash(newPassword, { type: argon2.argon2id });
+  if (oldPassword !== r.recordset[0].password) return { ok: false, error: 'Current password is not correct.' };
+  if (!newPassword || newPassword.length < 1) return { ok: false, error: 'New password must not be empty.' };
+  // PLAIN-TEXT storage per change request #2.
   await pool.request()
     .input('uid', sql.Int, userId)
-    .input('ph', sql.NVarChar, newHash)
-    .query(`UPDATE dbo.users SET password_hash = @ph, force_change_pw = 0 WHERE id = @uid`);
+    .input('pw', sql.NVarChar, newPassword)
+    .query(`UPDATE dbo.users SET password = @pw WHERE id = @uid`);
   return { ok: true };
 }
 
 export async function resetPassword(adminId: number, targetUserId: number, newPassword: string): Promise<void> {
-  if (!newPassword || newPassword.length < 8) {
-    throw new Error('New password must be at least 8 characters.');
-  }
+  if (!newPassword || newPassword.length < 1) throw new Error('New password must not be empty.');
   const pool = await getPool();
-  const newHash = await argon2.hash(newPassword, { type: argon2.argon2id });
+  // NOTE: record only "password was reset" in audit — never the password value.
   await pool.request()
     .input('uid', sql.Int, targetUserId)
-    .input('ph', sql.NVarChar, newHash)
-    .query(`UPDATE dbo.users SET password_hash = @ph, force_change_pw = 1 WHERE id = @uid`);
+    .input('pw', sql.NVarChar, newPassword)
+    .query(`UPDATE dbo.users SET password = @pw WHERE id = @uid`);
   await audit({ userId: adminId, userName: null, ip: null },
     'USERS', 'EDIT', 'User', String(targetUserId), null, null,
-    { force_change_pw: 1 }, undefined);
+    { passwordReset: true }, undefined);
 }
 
 export async function currentUser(userId: number) {
