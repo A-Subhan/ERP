@@ -1,6 +1,10 @@
 /* ===========================================================================
  * Setup service — first-run: creates company row + first admin + first branch
  * + initial fiscal year. Idempotent once setup is completed.
+ *
+ * Company ID is enforced unique across all time via the append-only audit_log:
+ * even if the settings row is ever deleted, the audit entry proves the ID was
+ * used before and the new setup is refused.
  * ==========================================================================*/
 import { getPool, sql, beginTx } from '../db/pool';
 import argon2 from 'argon2';
@@ -27,11 +31,49 @@ export async function isSetupDone(): Promise<boolean> {
   return r.recordset.length > 0;
 }
 
+/**
+ * Check whether a company ID has ever been used in a previous setup.
+ * Uses the append-only audit_log so the check survives settings-row deletion.
+ */
+export async function isCompanyIdTaken(companyId: string): Promise<boolean> {
+  const pool = await getPool();
+  // Settings row currently exists with this company_id?
+  const cur = await pool.request()
+    .input('cid', sql.NVarChar, companyId)
+    .query(`SELECT 1 FROM dbo.settings WHERE company_id = @cid`);
+  if (cur.recordset.length > 0) return true;
+
+  // Any prior setup audit entry with this company_id?
+  // JSON_VALUE reads from the after_values JSON column we populate in runSetup.
+  const prior = await pool.request()
+    .input('cid', sql.NVarChar, companyId)
+    .query(`
+      SELECT 1
+      FROM dbo.audit_log
+      WHERE action = 'CREATE'
+        AND record_type = 'Company'
+        AND JSON_VALUE(after_values, '$.companyId') = @cid
+    `);
+  return prior.recordset.length > 0;
+}
+
 export async function runSetup(input: SetupInput): Promise<{ adminUserId: number }> {
   if (await isSetupDone()) {
     throw new Error('First-time setup has already been completed. To change company or admin details, edit the database directly.');
   }
 
+  // Company ID uniqueness — across all time
+  if (await isCompanyIdTaken(input.companyId)) {
+    throw new Error(`Company ID "${input.companyId}" has already been used. Choose a different ID.`);
+  }
+
+  // Basic field validation (defensive — zod schema also catches these)
+  if (!input.companyName || input.companyName.trim().length === 0) {
+    throw new Error('Company name is required.');
+  }
+  if (!input.companyId || !/^[A-Za-z0-9 _-]+$/.test(input.companyId) || input.companyId.length > 50) {
+    throw new Error('Company ID is required and may only contain letters, numbers, spaces, underscore and hyphen (max 50 chars).');
+  }
   if (input.branchShortName.length > 20) {
     throw new Error('Branch short name must be 20 characters or fewer.');
   }
@@ -104,7 +146,7 @@ export async function runSetup(input: SetupInput): Promise<{ adminUserId: number
       .query(`SELECT id FROM dbo.users WHERE username = @uname`);
     const adminUserId = adminIdR.recordset[0].id;
 
-    // 5. Audit
+    // 5. Audit (with companyId in after_values so isCompanyIdTaken can find it later)
     await audit({ userId: adminUserId, userName: input.adminUsername, ip: null },
       'SETUP', 'CREATE', 'Company', null, null, null,
       { companyName: input.companyName, companyId: input.companyId, branch: input.branchName },
@@ -112,7 +154,6 @@ export async function runSetup(input: SetupInput): Promise<{ adminUserId: number
     );
 
     await txc.commit();
-
     return { adminUserId };
   } catch (err) {
     await txc.rollback();

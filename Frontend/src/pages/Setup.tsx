@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { api } from '../api/client';
 import { User } from '../api/types';
 
+interface CheckResult { companyId: string; taken: boolean; }
+
 export default function Setup({ onDone }: { onDone: () => void }) {
   const [f, setF] = useState({
     companyName: '',
@@ -17,14 +19,55 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // Per-field async validation state for company ID
+  const [companyIdStatus, setCompanyIdStatus] = useState<'idle' | 'checking' | 'taken' | 'ok'>('idle');
+  const [companyIdError, setCompanyIdError] = useState('');
 
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
+
+  // Debounced uniqueness check on company ID. Fires after the user stops
+  // typing for ~500ms. Rejects empty or invalid-format input client-side.
+  const onCompanyIdBlur = async () => {
+    const id = f.companyId.trim();
+    if (!id) { setCompanyIdStatus('idle'); setCompanyIdError(''); return; }
+    if (!/^[A-Za-z0-9 _-]+$/.test(id) || id.length > 50) {
+      setCompanyIdStatus('taken');
+      setCompanyIdError('Company ID may only contain letters, numbers, spaces, underscore and hyphen (max 50 chars).');
+      return;
+    }
+    setCompanyIdStatus('checking');
+    setCompanyIdError('');
+    try {
+      const r = await api.get<CheckResult>(`/api/check-company-id?id=${encodeURIComponent(id)}`);
+      if (r.taken) {
+        setCompanyIdStatus('taken');
+        setCompanyIdError(`Company ID "${id}" is already taken. Choose a different ID.`);
+      } else {
+        setCompanyIdStatus('ok');
+        setCompanyIdError('');
+      }
+    } catch (err) {
+      // Network or server error — don't block; the server-side check on submit
+      // is the authoritative one.
+      setCompanyIdStatus('idle');
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
     if (!f.companyName || !f.companyId) { setError('Company name and company ID are required.'); return; }
+    if (!/^[A-Za-z0-9 _-]+$/.test(f.companyId) || f.companyId.length > 50) {
+      setError('Company ID may only contain letters, numbers, spaces, underscore and hyphen (max 50 chars).'); return;
+    }
+    // Re-check uniqueness client-side as a final guard (the server also enforces).
+    if (companyIdStatus === 'taken') { setError(companyIdError); return; }
+    if (companyIdStatus !== 'ok') {
+      // Haven't checked yet or currently checking — block submit and trigger a check.
+      setError('Please wait for the company ID uniqueness check to finish.');
+      return;
+    }
     if (!f.branchName || !f.branchShortName) { setError('Branch name and short name are required.'); return; }
     if (!/^[A-Za-z0-9_-]+$/.test(f.branchShortName)) {
       setError('Branch short name may only contain letters, numbers, underscore and hyphen.'); return;
@@ -63,8 +106,20 @@ export default function Setup({ onDone }: { onDone: () => void }) {
           </div>
           <div className="field">
             <label className="field-label">Company ID <span className="req">*</span></label>
-            <input className="field-input" value={f.companyId} onChange={(e) => set('companyId', e.target.value)} />
-            <div className="field-hint">Set once; cannot be changed from the UI.</div>
+            <input
+              className="field-input"
+              value={f.companyId}
+              onChange={(e) => { set('companyId', e.target.value); setCompanyIdStatus('idle'); setCompanyIdError(''); }}
+              onBlur={onCompanyIdBlur}
+              maxLength={50}
+              placeholder="e.g. ACME-001"
+            />
+            <div className="field-hint">
+              {companyIdStatus === 'checking' && 'Checking availability…'}
+              {companyIdStatus === 'ok' && <span style={{ color: 'var(--c-success)' }}>This ID is available.</span>}
+              {companyIdStatus === 'taken' && <span style={{ color: 'var(--c-danger)' }}>{companyIdError}</span>}
+              {companyIdStatus === 'idle' && 'Set once. Cannot be reused across setups.'}
+            </div>
           </div>
         </div>
 

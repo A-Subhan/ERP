@@ -52,12 +52,17 @@ async function bootstrap(): Promise<void> {
   app.use(cookieParser());
   app.use(cors({ origin: config.env === 'production' ? false : true, credentials: true }));
 
-  // Sessions
+  // Sessions.
+  // saveUninitialized: true is required so that GET /api/setup-status and
+  // similar public GETs persist a session id and the CSRF token we issue on
+  // them stays valid for the follow-up POST. Without it, the POST would
+  // create a brand-new session with a different id and verification would
+  // fail with "Security token is invalid or has expired".
   app.use(session({
     secret: config.session.secret,
     name: config.session.name,
     resave: false,
-    saveUninitialized: false,
+    saveUninitialized: true,
     rolling: true,
     cookie: {
       httpOnly: true,
