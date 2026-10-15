@@ -43,6 +43,17 @@ authRouter.get('/setup-status', async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Real-time company ID uniqueness check. Public (no auth, no CSRF) because
+// it runs on the first-time setup form before any session exists.
+authRouter.get('/check-company-id', async (req, res, next) => {
+  try {
+    const companyId = String(req.query.id || '').trim();
+    if (!companyId) { res.status(400).json({ error: 'id query parameter is required.' }); return; }
+    const taken = await setupService.isCompanyIdTaken(companyId);
+    res.json({ companyId, taken });
+  } catch (err) { next(err); }
+});
+
 authRouter.post('/setup', skipCsrf, validateBody(setupSchema), async (req, res, next) => {
   try {
     if (await setupService.isSetupDone()) {
