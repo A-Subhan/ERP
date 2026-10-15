@@ -72,7 +72,9 @@ export async function createBranch(input: {
       levelNo = pr.recordset[0].level_no + 1;
     }
 
-    const code = await nextChildCode('BRANCH', parentCode, levelNo, 'branches');
+    // Inside this transaction: the UPDLOCK range below must not deadlock
+    // against our own uncommitted parent-row lock on a second connection
+    const code = await nextChildCode('BRANCH', parentCode, levelNo, 'branches', txc);
     const dup = await txc.req()
       .input('sn', sql.VarChar, input.shortName)
       .query(`SELECT 1 FROM dbo.branches WHERE short_name = @sn`);

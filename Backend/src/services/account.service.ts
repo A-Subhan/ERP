@@ -111,7 +111,9 @@ export async function createAccount(input: {
       input.nature = parentNature;
     }
 
-    const code = await nextChildCode('COA', parentCode, levelNo, 'accounts');
+    // Inside this transaction: the UPDLOCK range below must not deadlock
+    // against our own uncommitted parent-row lock on a second connection
+    const code = await nextChildCode('COA', parentCode, levelNo, 'accounts', txc);
 
     // Posting accounts cannot have children; group accounts cannot be posted to.
     if (input.isGroup && (input.isCash || input.isBank || input.partyType !== 'NONE')) {

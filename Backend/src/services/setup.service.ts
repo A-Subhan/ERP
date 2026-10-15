@@ -111,8 +111,9 @@ export async function runSetup(input: SetupInput): Promise<{ adminUserId: number
       `);
     const fyId = fyR.recordset[0].id;
 
-    // 3. First branch (root of the tree)
-    const branchCode = await nextChildCode('BRANCH', null, 1, 'branches');
+    // 3. First branch (root of the tree) — runs inside this transaction so the
+    // settings read cannot deadlock against our own uncommitted settings INSERT
+    const branchCode = await nextChildCode('BRANCH', null, 1, 'branches', txc);
     const branchR = await txc.req()
       .input('code', sql.VarChar, branchCode)
       .input('name', sql.NVarChar, input.branchName)

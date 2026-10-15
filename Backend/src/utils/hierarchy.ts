@@ -6,14 +6,21 @@ import { beginTx, sql } from '../db/pool';
 
 export type HierarchyKind = 'BRANCH' | 'STORE' | 'PRODUCT' | 'COA';
 
+/**
+ * A caller-owned transaction whose request helper the code generator should
+ * reuse. Reading settings / locking the target table on a separate connection
+ * while the caller's transaction holds uncommitted locks deadlocks the two
+ * connections (each waits for the other), so callers inside a transaction
+ * must pass themselves here.
+ */
+export interface AmbientTx { req: () => sql.Request; }
+
 interface Settings {
   digitsPerLevel: number[];
   maxLevels: number;
 }
 
-export async function getHierarchySettings(kind: HierarchyKind): Promise<Settings> {
-  const { getPool } = await import('../db/pool');
-  const pool = await getPool();
+export async function getHierarchySettings(kind: HierarchyKind, ambient?: AmbientTx): Promise<Settings> {
   const field = kind === 'BRANCH' ? 'branch_digits_per_level'
               : kind === 'STORE'  ? 'store_digits_per_level'
               : kind === 'PRODUCT' ? 'product_digits_per_level'
@@ -23,7 +30,10 @@ export async function getHierarchySettings(kind: HierarchyKind): Promise<Setting
                  : kind === 'PRODUCT' ? 'product_max_levels'
                  : 'coa_max_levels';
 
-  const r = await pool.request().query(`SELECT ${field} AS digits, ${maxField} AS max FROM dbo.settings WHERE id = 1`);
+  const query = `SELECT ${field} AS digits, ${maxField} AS max FROM dbo.settings WHERE id = 1`;
+  const r = ambient
+    ? await ambient.req().query(query)
+    : await (await (await import('../db/pool')).getPool()).request().query(query);
   if (r.recordset.length === 0) throw new Error('Settings row missing; run first-time setup.');
   const raw = r.recordset[0].digits as string;
   const digits = raw.split(',').map((s: string) => parseInt(s.trim(), 10)).filter((n: number) => !Number.isNaN(n));
@@ -40,9 +50,10 @@ export async function nextChildCode(
   kind: HierarchyKind,
   parentCode: string | null,
   targetLevel: number,
-  tableName: 'branches' | 'stores' | 'products' | 'accounts'
+  tableName: 'branches' | 'stores' | 'products' | 'accounts',
+  ambient?: AmbientTx,
 ): Promise<string> {
-  const { digitsPerLevel, maxLevels } = await getHierarchySettings(kind);
+  const { digitsPerLevel, maxLevels } = await getHierarchySettings(kind, ambient);
   if (targetLevel < 1 || targetLevel > maxLevels) {
     throw new Error(`Level ${targetLevel} is out of range (1..${maxLevels})`);
   }
@@ -53,11 +64,9 @@ export async function nextChildCode(
   // Compute prefix: parentCode + child-segment
   const digitsForThisLevel = digitsPerLevel[targetLevel - 1];
 
-  const txc = await beginTx();
-  try {
+  const generate = async (req: sql.Request): Promise<string> => {
     // Count existing children at this level with this prefix (locked)
-    const likePattern = (parentCode || '') + '_'.repeat(digitsForThisLevel);
-    const r = await txc.req()
+    const r = await req
       .input('prefix', sql.VarChar, parentCode || '')
       .input('len', sql.Int, (parentCode || '').length)
       .input('level', sql.Int, targetLevel)
@@ -77,8 +86,14 @@ export async function nextChildCode(
     if (nextSerial > maxSerial) {
       throw new Error(`No more codes available at this level (max ${maxSerial} reached)`);
     }
-    const segment = String(nextSerial).padStart(digitsForThisLevel, '0');
-    const newCode = (parentCode || '') + segment;
+    return (parentCode || '') + String(nextSerial).padStart(digitsForThisLevel, '0');
+  };
+
+  if (ambient) return generate(ambient.req());
+
+  const txc = await beginTx();
+  try {
+    const newCode = await generate(txc.req());
     await txc.commit();
     return newCode;
   } catch (err) {
