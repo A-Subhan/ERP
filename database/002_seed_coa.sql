@@ -72,8 +72,8 @@ IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '01001002')
     SELECT '01001002', id, 3, 'Banks', 'ASSET', 0, 1, 1 FROM dbo.accounts WHERE code = '01001';
 
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '01001003')
-    INSERT INTO dbo.accounts (code, parent_id, level_no, name, nature, is_group, party_type, is_active)
-    SELECT '01001003', id, 3, 'Trade Debtors', 'ASSET', 0, 'CUSTOMER', 1 FROM dbo.accounts WHERE code = '01001';
+    INSERT INTO dbo.accounts (code, parent_id, level_no, name, nature, is_group, party_type, credit_days, is_active)
+    SELECT '01001003', id, 3, 'Trade Debtors', 'ASSET', 0, 'CUSTOMER', 0, 1 FROM dbo.accounts WHERE code = '01001';
 
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '01001004')
     INSERT INTO dbo.accounts (code, parent_id, level_no, name, nature, is_group, is_active)
@@ -96,8 +96,8 @@ GO
 -- Level-3 posting accounts under Current Liabilities
 -- ----------------------------------------------------------------------------
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '02001001')
-    INSERT INTO dbo.accounts (code, parent_id, level_no, name, nature, is_group, party_type, is_active)
-    SELECT '02001001', id, 3, 'Trade Creditors', 'LIABILITY', 0, 'SUPPLIER', 1 FROM dbo.accounts WHERE code = '02001';
+    INSERT INTO dbo.accounts (code, parent_id, level_no, name, nature, is_group, party_type, credit_days, is_active)
+    SELECT '02001001', id, 3, 'Trade Creditors', 'LIABILITY', 0, 'SUPPLIER', 0, 1 FROM dbo.accounts WHERE code = '02001';
 
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '02001002')
     INSERT INTO dbo.accounts (code, parent_id, level_no, name, nature, is_group, is_active)

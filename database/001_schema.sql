@@ -469,36 +469,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_vouchers_cheque')
 GO
 
 -- ============================================================================
--- 14. Voucher lines (for JV and cash/bank with tax)
--- ============================================================================
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'voucher_lines')
-BEGIN
-    CREATE TABLE dbo.voucher_lines (
-        id              BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_voucher_lines PRIMARY KEY,
-        voucher_id      BIGINT       NOT NULL,
-        line_no         INT          NOT NULL,
-        account_id      INT          NOT NULL,
-        debit           DECIMAL(18,2) NOT NULL DEFAULT 0,
-        credit          DECIMAL(18,2) NOT NULL DEFAULT 0,
-        line_narration  NVARCHAR(500) NULL,
-        -- Knock-off link (only on customer/supplier accounts in KNOCK_OFF mode)
-        bill_id         BIGINT       NULL,
-        amount_applied  DECIMAL(18,2) NULL,
-        CONSTRAINT PK_voucher_lines_pk UNIQUE (voucher_id, line_no),
-        CONSTRAINT FK_vl_voucher FOREIGN KEY (voucher_id) REFERENCES dbo.vouchers(id) ON DELETE CASCADE,
-        CONSTRAINT FK_vl_account FOREIGN KEY (account_id) REFERENCES dbo.accounts(id),
-        CONSTRAINT FK_vl_bill FOREIGN KEY (bill_id) REFERENCES dbo.bills(id),
-        -- Either debit or credit (not both, not neither) for the row amount
-        CHECK ((debit > 0 AND credit = 0) OR (credit > 0 AND debit = 0))
-    );
-END
-GO
--- Note: the FK_vl_bill reference to dbo.bills requires bills table (defined next).
--- SQL Server allows forward references only when the referenced object exists at
--- CREATE time; we will drop and recreate this FK after bills is created below.
-
--- ============================================================================
--- 15. Bills (customer/supplier open bills for knock-off)
+-- 14. Bills (moved before voucher_lines so the inline FK_vl_bill resolves) (customer/supplier open bills for knock-off)
 -- ============================================================================
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'bills')
 BEGIN
@@ -535,14 +506,30 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_bills_doc')
     CREATE INDEX IX_bills_doc ON dbo.bills(ref_doc_type, ref_doc_id) WHERE ref_doc_type IS NOT NULL;
 GO
 
--- Now drop the placeholder FK and recreate it properly.
-IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_vl_bill')
-    ALTER TABLE dbo.voucher_lines DROP CONSTRAINT FK_vl_bill;
-GO
-
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_vl_bill')
-    ALTER TABLE dbo.voucher_lines WITH CHECK ADD CONSTRAINT FK_vl_bill
-    FOREIGN KEY (bill_id) REFERENCES dbo.bills(id);
+-- ============================================================================
+-- 15. Voucher lines (moved after bills so the inline FK_vl_bill resolves) (for JV and cash/bank with tax)
+-- ============================================================================
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'voucher_lines')
+BEGIN
+    CREATE TABLE dbo.voucher_lines (
+        id              BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_voucher_lines PRIMARY KEY,
+        voucher_id      BIGINT       NOT NULL,
+        line_no         INT          NOT NULL,
+        account_id      INT          NOT NULL,
+        debit           DECIMAL(18,2) NOT NULL DEFAULT 0,
+        credit          DECIMAL(18,2) NOT NULL DEFAULT 0,
+        line_narration  NVARCHAR(500) NULL,
+        -- Knock-off link (only on customer/supplier accounts in KNOCK_OFF mode)
+        bill_id         BIGINT       NULL,
+        amount_applied  DECIMAL(18,2) NULL,
+        CONSTRAINT PK_voucher_lines_pk UNIQUE (voucher_id, line_no),
+        CONSTRAINT FK_vl_voucher FOREIGN KEY (voucher_id) REFERENCES dbo.vouchers(id) ON DELETE CASCADE,
+        CONSTRAINT FK_vl_account FOREIGN KEY (account_id) REFERENCES dbo.accounts(id),
+        CONSTRAINT FK_vl_bill FOREIGN KEY (bill_id) REFERENCES dbo.bills(id),
+        -- Either debit or credit (not both, not neither) for the row amount
+        CHECK ((debit > 0 AND credit = 0) OR (credit > 0 AND debit = 0))
+    );
+END
 GO
 
 -- ============================================================================
@@ -651,7 +638,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_sl_product_date')
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_sl_store_product')
     CREATE INDEX IX_sl_store_product ON dbo.stock_ledger(store_id, product_id, doc_date) INCLUDE (qty_in, qty_out);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_sl_ref_doc')
-    CREATE INDEX IX_sl_ref_doc ON dbo.stock_ledger(ref_doc_type, ref_doc_id) WHERE ref_doc_type IS NOT NULL;
+    CREATE INDEX IX_sl_ref_doc ON dbo.stock_ledger(doc_type, ref_doc_id);
 GO
 
 -- ============================================================================
