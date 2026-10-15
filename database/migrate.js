@@ -76,19 +76,45 @@ function splitBatches(scriptText) {
     return batches;
 }
 
+// Scripts that create or switch databases cannot run inside the per-script
+// transaction: CREATE DATABASE is only allowed in autocommit mode, and
+// USE <db> invalidates the runner's transaction handle. Such scripts are
+// applied in autocommit mode instead (they are guarded/idempotent).
+const AUTOCOMMIT_SCRIPTS = new Set(['000_create_db.sql']);
+
 // ---------------------------------------------------------------------------
 // Apply one .sql file (idempotently)
 // ---------------------------------------------------------------------------
 async function applyScript(pool, filePath, scriptName) {
-    const txc = await pool.transaction();
+    const autocommit = AUTOCOMMIT_SCRIPTS.has(scriptName);
+    const txc = autocommit ? null : await pool.transaction();
+    if (txc) await txc.begin();
+    // Seeds may bail out via PRINT 'Skipping <script> ...' when their
+    // preconditions are missing (e.g. 002 needs the settings row created by
+    // first-time setup). Such a run must NOT be recorded in _migrations, or
+    // the seed could never apply later. PRINT output arrives via 'info'.
+    let deferredByScript = false;
+    const makeRequest = () => {
+        const req = autocommit ? pool.request() : txc.request();
+        req.on('info', (msg) => {
+            const text = typeof msg === 'string' ? msg : (msg && msg.message) || '';
+            if (new RegExp(`^Skipping\\b.*${scriptName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i').test(text)) {
+                deferredByScript = true;
+            }
+        });
+        return req;
+    };
+    const run = async (queryText) => {
+        await makeRequest().batch(queryText);
+    };
     try {
         // Check if already applied
-        const already = await txc.request()
+        const already = await pool.request()
             .input('name', sql.VarChar, scriptName)
             .query('SELECT 1 FROM dbo._migrations WHERE script_name = @name');
         if (already.recordset.length > 0) {
             console.log(`  [skip] ${scriptName} already applied`);
-            await txc.rollback();
+            if (txc) await txc.rollback();
             return false;
         }
 
@@ -99,7 +125,7 @@ async function applyScript(pool, filePath, scriptName) {
             const b = batches[i].trim();
             if (!b) continue;
             try {
-                await txc.request().batch(b);
+                await run(b);
             } catch (err) {
                 // Re-raise with batch number for clarity
                 const msg = `Batch ${i + 1} of ${scriptName} failed: ${err.message}`;
@@ -107,14 +133,21 @@ async function applyScript(pool, filePath, scriptName) {
             }
         }
 
-        await txc.request()
+        if (deferredByScript) {
+            // Preconditions missing — leave unrecorded so a later run applies it.
+            if (txc) await txc.commit();
+            console.log(`  [defer] ${scriptName} skipped by script (preconditions missing) — will retry on next run`);
+            return 'deferred';
+        }
+
+        await pool.request()
             .input('name', sql.VarChar, scriptName)
             .query('INSERT INTO dbo._migrations (script_name) VALUES (@name)');
-        await txc.commit();
+        if (txc) await txc.commit();
         console.log(`  [ok]   ${scriptName} applied`);
         return true;
     } catch (err) {
-        try { await txc.rollback(); } catch (_) {}
+        if (txc) { try { await txc.rollback(); } catch (_) {} }
         throw err;
     }
 }
@@ -133,9 +166,31 @@ async function applyScript(pool, filePath, scriptName) {
     try {
         pool = await sql.connect(config);
     } catch (err) {
-        console.error('Cannot connect to SQL Server:', err.message);
-        console.error('Check DB_SERVER, DB_PORT, DB_DATABASE, DB_USER, DB_PASSWORD in Backend/.env');
-        process.exit(1);
+        // Most likely the target database doesn't exist yet. Bootstrap it by
+        // running 000_create_db.sql in the master context, then reconnect.
+        const bootstrap = path.join(__dirname, '000_create_db.sql');
+        if (!fs.existsSync(bootstrap)) {
+            console.error('Cannot connect to SQL Server:', err.message);
+            console.error('Check DB_SERVER, DB_PORT, DB_DATABASE, DB_USER, DB_PASSWORD in Backend/.env');
+            process.exit(1);
+        }
+        console.log(`Initial connection failed (${err.message.trim()}).`);
+        console.log('Bootstrapping database via 000_create_db.sql ...');
+        try {
+            const masterPool = await sql.connect({ ...config, database: 'master' });
+            for (const b of splitBatches(fs.readFileSync(bootstrap, 'utf8'))) {
+                const t = b.trim();
+                if (t) await masterPool.request().batch(t);
+            }
+            await masterPool.close();
+            pool = await sql.connect(config);
+            console.log('Bootstrap complete.');
+        } catch (err2) {
+            console.error('Cannot connect to SQL Server:', err.message);
+            console.error('Bootstrap failed:', err2.message);
+            console.error('Check DB_SERVER, DB_PORT, DB_DATABASE, DB_USER, DB_PASSWORD in Backend/.env');
+            process.exit(1);
+        }
     }
 
     // Ensure _migrations table exists (so we can run on a fresh DB before 001)
@@ -167,6 +222,7 @@ async function applyScript(pool, filePath, scriptName) {
     }
 
     let applied = 0;
+    let deferred = 0;
     let skipped = 0;
     let failed = 0;
 
@@ -174,7 +230,9 @@ async function applyScript(pool, filePath, scriptName) {
         const filePath = path.join(__dirname, f);
         try {
             const did = await applyScript(pool, filePath, f);
-            if (did) applied++; else skipped++;
+            if (did === true) applied++;
+            else if (did === 'deferred') deferred++;
+            else skipped++;
         } catch (err) {
             console.error(`  [fail] ${f}:`, err.message);
             failed++;
@@ -185,6 +243,7 @@ async function applyScript(pool, filePath, scriptName) {
     console.log('\nMigration summary:');
     console.log(`  applied: ${applied}`);
     console.log(`  skipped: ${skipped}`);
+    console.log(`  deferred: ${deferred}`);
     console.log(`  failed:  ${failed}`);
 
     await pool.close();

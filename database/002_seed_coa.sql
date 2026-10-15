@@ -23,6 +23,10 @@ GO
 -- ----------------------------------------------------------------------------
 -- Level-1 group accounts (top-level by nature)
 -- ----------------------------------------------------------------------------
+-- Every batch below re-checks the guard: RETURN only exits the current batch,
+-- so a single guard at the top of the file would not stop the later batches.
+IF NOT EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1) RETURN;
+
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '01')
     INSERT INTO dbo.accounts (code, parent_id, level_no, name, nature, is_group, is_active)
     VALUES ('01', NULL, 1, 'ASSETS', 'ASSET', 1, 1);
@@ -43,6 +47,8 @@ GO
 -- ----------------------------------------------------------------------------
 -- Level-2 group accounts
 -- ----------------------------------------------------------------------------
+IF NOT EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1) RETURN;
+
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '01001')
     INSERT INTO dbo.accounts (code, parent_id, level_no, name, nature, is_group, is_active)
     SELECT '01001', id, 2, 'Current Assets', 'ASSET', 1, 1 FROM dbo.accounts WHERE code = '01';
@@ -63,6 +69,8 @@ GO
 -- ----------------------------------------------------------------------------
 -- Level-3 posting accounts under Current Assets
 -- ----------------------------------------------------------------------------
+IF NOT EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1) RETURN;
+
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '01001001')
     INSERT INTO dbo.accounts (code, parent_id, level_no, name, nature, is_group, is_cash, is_active)
     SELECT '01001001', id, 3, 'Cash in Hand', 'ASSET', 0, 1, 1 FROM dbo.accounts WHERE code = '01001';
@@ -95,6 +103,8 @@ GO
 -- ----------------------------------------------------------------------------
 -- Level-3 posting accounts under Current Liabilities
 -- ----------------------------------------------------------------------------
+IF NOT EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1) RETURN;
+
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '02001001')
     INSERT INTO dbo.accounts (code, parent_id, level_no, name, nature, is_group, party_type, credit_days, is_active)
     SELECT '02001001', id, 3, 'Trade Creditors', 'LIABILITY', 0, 'SUPPLIER', 0, 1 FROM dbo.accounts WHERE code = '02001';
@@ -111,6 +121,8 @@ GO
 -- ----------------------------------------------------------------------------
 -- Level-3 posting accounts under Capital and Retained Earnings
 -- ----------------------------------------------------------------------------
+IF NOT EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1) RETURN;
+
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '03001001')
     INSERT INTO dbo.accounts (code, parent_id, level_no, name, nature, is_group, is_active)
     SELECT '03001001', id, 3, 'Owner Capital', 'EQUITY', 0, 1 FROM dbo.accounts WHERE code = '03001';
@@ -123,6 +135,8 @@ GO
 -- ----------------------------------------------------------------------------
 -- Level-3 posting accounts under Revenue
 -- ----------------------------------------------------------------------------
+IF NOT EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1) RETURN;
+
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '04001001')
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '04001')
@@ -134,6 +148,8 @@ BEGIN
 END
 GO
 
+IF NOT EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1) RETURN;
+
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '04001002')
     INSERT INTO dbo.accounts (code, parent_id, level_no, name, nature, is_group, is_active)
     SELECT '04001002', id, 3, 'Sales Returns', 'REVENUE', 0, 1 FROM dbo.accounts WHERE code = '04001';
@@ -142,6 +158,8 @@ GO
 -- ----------------------------------------------------------------------------
 -- Level-3 posting accounts under Expenses
 -- ----------------------------------------------------------------------------
+IF NOT EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1) RETURN;
+
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '05001001')
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '05001')
@@ -159,6 +177,8 @@ BEGIN
 END
 GO
 
+IF NOT EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1) RETURN;
+
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '05002001')
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '05002')
@@ -173,6 +193,8 @@ GO
 -- ----------------------------------------------------------------------------
 -- Update settings to map all the default accounts
 -- ----------------------------------------------------------------------------
+IF NOT EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1) RETURN;
+
 UPDATE s SET
     default_cash_account_id         = (SELECT id FROM dbo.accounts WHERE code = '01001001'),
     default_bank_account_id         = (SELECT id FROM dbo.accounts WHERE code = '01001002'),
@@ -189,6 +211,8 @@ UPDATE s SET
 FROM dbo.settings s
 WHERE s.id = 1;
 GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1) RETURN;
 
 PRINT '002_seed_coa.sql applied successfully.';
 GO
