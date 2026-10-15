@@ -141,7 +141,7 @@ BEGIN
         phone           NVARCHAR(50)  NULL,
         email           NVARCHAR(100) NULL,
         is_active        BIT          NOT NULL DEFAULT 1,
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         created_at      DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
         updated_at      DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
         CONSTRAINT UQ_branches_code UNIQUE (code),
@@ -165,7 +165,7 @@ BEGIN
         name            NVARCHAR(200) NOT NULL,
         store_type      VARCHAR(20)  NOT NULL DEFAULT 'STOCK' CHECK (store_type IN ('GROUP','STOCK')),
         is_active        BIT          NOT NULL DEFAULT 1,
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         created_at      DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
         updated_at      DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
         CONSTRAINT UQ_stores_code UNIQUE (code),
@@ -235,7 +235,7 @@ BEGIN
         bank_account_no  NVARCHAR(50)  NULL,
         bank_branch      NVARCHAR(200) NULL,
         is_active        BIT          NOT NULL DEFAULT 1,
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         created_at      DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
         updated_at      DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
         CONSTRAINT UQ_accounts_code UNIQUE (code),
@@ -266,7 +266,7 @@ BEGIN
         account_id      INT          NOT NULL,
         percentage       DECIMAL(7,4) NOT NULL CHECK (percentage BETWEEN 0 AND 100),
         is_active        BIT          NOT NULL DEFAULT 1,
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         created_at      DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
         updated_at      DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
         CONSTRAINT UQ_tax_heads_display_id UNIQUE (display_id),
@@ -291,7 +291,7 @@ BEGIN
         force_change_pw  BIT          NOT NULL DEFAULT 1,
         allowed_branches_csv VARCHAR(500) NULL,  -- NULL = all
         allowed_stores_csv  VARCHAR(500) NULL,  -- NULL = all
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         last_login_at   DATETIME2     NULL,
         failed_login_count INT        NOT NULL DEFAULT 0,
         locked_until    DATETIME2     NULL,
@@ -358,18 +358,16 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_audit_record')
 GO
 
 -- Block UPDATE/DELETE on audit_log
-IF NOT EXISTS (SELECT 1 FROM sys.triggers WHERE name = 'TRG_audit_no_update')
+CREATE OR ALTER TRIGGER dbo.TRG_audit_no_update
+ON dbo.audit_log
+INSTEAD OF UPDATE, DELETE
+AS
 BEGIN
-    CREATE TRIGGER dbo.TRG_audit_no_update
-    ON dbo.audit_log
-    INSTEAD OF UPDATE, DELETE
-    AS
-    BEGIN
-        SET NOCOUNT ON;
-        RAISERROR('audit_log is append-only; UPDATE and DELETE are not permitted.', 16, 1);
-        ROLLBACK TRANSACTION;
-    END
+    SET NOCOUNT ON;
+    RAISERROR('audit_log is append-only; UPDATE and DELETE are not permitted.', 16, 1);
+    ROLLBACK TRANSACTION;
 END
+
 GO
 
 -- ============================================================================
@@ -390,7 +388,7 @@ BEGIN
         sales_price      DECIMAL(18,4) NOT NULL DEFAULT 0,
         is_group        BIT          NOT NULL DEFAULT 0,
         is_active        BIT          NOT NULL DEFAULT 1,
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         created_at      DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
         updated_at      DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
         CONSTRAINT UQ_products_code UNIQUE (code),
@@ -445,7 +443,7 @@ BEGIN
         created_by       INT          NOT NULL,
         created_at       DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
         updated_at       DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
-        row_version      ROW_VERSION  NOT NULL,
+        row_version      ROWVERSION  NOT NULL,
         CONSTRAINT UQ_vouchers_no UNIQUE (voucher_no),
         CONSTRAINT FK_vouchers_fy FOREIGN KEY (fiscal_year_id) REFERENCES dbo.fiscal_years(id),
         CONSTRAINT FK_vouchers_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id),
@@ -608,7 +606,7 @@ BEGIN
         wholesale_price  DECIMAL(18,4) NULL,
         resale_price     DECIMAL(18,4) NULL,
         last_updated     DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         CONSTRAINT PK_stock_balances PRIMARY KEY (product_id, store_id),
         CONSTRAINT FK_sb_product FOREIGN KEY (product_id) REFERENCES dbo.products(id),
         CONSTRAINT FK_sb_store FOREIGN KEY (store_id) REFERENCES dbo.stores(id)
@@ -672,7 +670,7 @@ BEGIN
         status          VARCHAR(20) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','PARTLY','CLOSED','CANCELLED')),
         created_by      INT         NOT NULL,
         created_at      DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         CONSTRAINT UQ_so_no UNIQUE (doc_no),
         CONSTRAINT FK_so_fy FOREIGN KEY (fiscal_year_id) REFERENCES dbo.fiscal_years(id),
         CONSTRAINT FK_so_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id),
@@ -718,7 +716,7 @@ BEGIN
         status          VARCHAR(20) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','INVOICED','CANCELLED')),
         created_by      INT         NOT NULL,
         created_at      DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         CONSTRAINT UQ_dc_no UNIQUE (doc_no),
         CONSTRAINT FK_dc_fy FOREIGN KEY (fiscal_year_id) REFERENCES dbo.fiscal_years(id),
         CONSTRAINT FK_dc_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id),
@@ -767,7 +765,7 @@ BEGIN
         is_returned_all  BIT         NOT NULL DEFAULT 0,
         created_by      INT         NOT NULL,
         created_at      DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         CONSTRAINT UQ_si_no UNIQUE (doc_no),
         CONSTRAINT FK_si_fy FOREIGN KEY (fiscal_year_id) REFERENCES dbo.fiscal_years(id),
         CONSTRAINT FK_si_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id),
@@ -820,7 +818,7 @@ BEGIN
         reason          NVARCHAR(500) NULL,
         created_by      INT         NOT NULL,
         created_at      DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         CONSTRAINT UQ_cn_no UNIQUE (doc_no),
         CONSTRAINT FK_cn_fy FOREIGN KEY (fiscal_year_id) REFERENCES dbo.fiscal_years(id),
         CONSTRAINT FK_cn_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id),
@@ -870,7 +868,7 @@ BEGIN
         status          VARCHAR(20) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','CLOSED','CANCELLED')),
         created_by      INT         NOT NULL,
         created_at      DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         CONSTRAINT UQ_pr_no UNIQUE (doc_no),
         CONSTRAINT FK_pr_fy FOREIGN KEY (fiscal_year_id) REFERENCES dbo.fiscal_years(id),
         CONSTRAINT FK_pr_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id),
@@ -911,7 +909,7 @@ BEGIN
         status          VARCHAR(20) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','PARTLY','CLOSED','CANCELLED')),
         created_by      INT         NOT NULL,
         created_at      DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         CONSTRAINT UQ_po_no UNIQUE (doc_no),
         CONSTRAINT FK_po_fy FOREIGN KEY (fiscal_year_id) REFERENCES dbo.fiscal_years(id),
         CONSTRAINT FK_po_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id),
@@ -955,7 +953,7 @@ BEGIN
         status          VARCHAR(20) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','INVOICED','CANCELLED')),
         created_by      INT         NOT NULL,
         created_at      DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         CONSTRAINT UQ_rc_no UNIQUE (doc_no),
         CONSTRAINT FK_rc_fy FOREIGN KEY (fiscal_year_id) REFERENCES dbo.fiscal_years(id),
         CONSTRAINT FK_rc_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id),
@@ -1004,7 +1002,7 @@ BEGIN
         is_returned_all  BIT         NOT NULL DEFAULT 0,
         created_by      INT         NOT NULL,
         created_at      DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         CONSTRAINT UQ_pi_no UNIQUE (doc_no),
         CONSTRAINT UQ_pi_supplier_inv UNIQUE (supplier_id, supplier_invoice_no),
         CONSTRAINT FK_pi_fy FOREIGN KEY (fiscal_year_id) REFERENCES dbo.fiscal_years(id),
@@ -1058,7 +1056,7 @@ BEGIN
         reason          NVARCHAR(500) NULL,
         created_by      INT         NOT NULL,
         created_at      DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         CONSTRAINT UQ_dn_no UNIQUE (doc_no),
         CONSTRAINT FK_dn_fy FOREIGN KEY (fiscal_year_id) REFERENCES dbo.fiscal_years(id),
         CONSTRAINT FK_dn_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id),
@@ -1112,7 +1110,7 @@ BEGIN
         reference       NVARCHAR(200) NULL,
         created_by      INT         NOT NULL,
         created_at      DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         CONSTRAINT UQ_mv_no UNIQUE (doc_no),
         CONSTRAINT FK_mv_fy FOREIGN KEY (fiscal_year_id) REFERENCES dbo.fiscal_years(id),
         CONSTRAINT FK_mv_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id),
@@ -1136,7 +1134,7 @@ BEGIN
         reference       NVARCHAR(200) NULL,
         created_by      INT         NOT NULL,
         created_at      DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         CONSTRAINT UQ_sa_no UNIQUE (doc_no),
         CONSTRAINT FK_sa_fy FOREIGN KEY (fiscal_year_id) REFERENCES dbo.fiscal_years(id),
         CONSTRAINT FK_sa_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id),
@@ -1220,7 +1218,7 @@ BEGIN
         resale_price    DECIMAL(18,4) NULL,
         created_by      INT         NOT NULL,
         created_at      DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME(),
-        row_version     ROW_VERSION  NOT NULL,
+        row_version     ROWVERSION  NOT NULL,
         CONSTRAINT UQ_os_no UNIQUE (doc_no),
         CONSTRAINT FK_os_fy FOREIGN KEY (fiscal_year_id) REFERENCES dbo.fiscal_years(id),
         CONSTRAINT FK_os_branch FOREIGN KEY (branch_id) REFERENCES dbo.branches(id),
@@ -1251,213 +1249,197 @@ GO
 
 -- 25.1 GL entries: opening balance must be balanced per branch per fiscal_year start date
 -- (Opening Trial Balance: total debit == total credit per branch)
-IF NOT EXISTS (SELECT 1 FROM sys.triggers WHERE name = 'TRG_opening_balanced')
+CREATE OR ALTER TRIGGER dbo.TRG_opening_balanced
+ON dbo.opening_balances
+AFTER INSERT, UPDATE
+AS
 BEGIN
-    CREATE TRIGGER dbo.TRG_opening_balanced
-    ON dbo.opening_balances
-    AFTER INSERT, UPDATE
-    AS
+    SET NOCOUNT ON;
+    IF EXISTS (
+        SELECT 1
+        FROM (
+            SELECT branch_id, SUM(debit) AS d, SUM(credit) AS c
+            FROM dbo.opening_balances
+            GROUP BY branch_id
+        ) x
+        WHERE ABS(d - c) > 0.01
+    )
     BEGIN
-        SET NOCOUNT ON;
-        IF EXISTS (
-            SELECT 1
-            FROM (
-                SELECT branch_id, SUM(debit) AS d, SUM(credit) AS c
-                FROM dbo.opening_balances
-                GROUP BY branch_id
-            ) x
-            WHERE ABS(d - c) > 0.01
-        )
-        BEGIN
-            RAISERROR('Opening balances must be balanced per branch (total debit = total credit).', 16, 1);
-            ROLLBACK TRANSACTION;
-            RETURN;
-        END
+        RAISERROR('Opening balances must be balanced per branch (total debit = total credit).', 16, 1);
+        ROLLBACK TRANSACTION;
+        RETURN;
     END
 END
+
 GO
 
 -- 25.2 Voucher: debit total == credit total (checked against voucher_lines)
-IF NOT EXISTS (SELECT 1 FROM sys.triggers WHERE name = 'TRG_voucher_lines_balanced')
+CREATE OR ALTER TRIGGER dbo.TRG_voucher_lines_balanced
+ON dbo.voucher_lines
+AFTER INSERT, UPDATE, DELETE
+AS
 BEGIN
-    CREATE TRIGGER dbo.TRG_voucher_lines_balanced
-    ON dbo.voucher_lines
-    AFTER INSERT, UPDATE, DELETE
-    AS
-    BEGIN
-        SET NOCOUNT ON;
-        IF TRIGGER_NESTLEVEL() > 1 RETURN;
+    SET NOCOUNT ON;
+    IF TRIGGER_NESTLEVEL() > 1 RETURN;
 
-        IF EXISTS (
-            SELECT x.voucher_id
-            FROM (
-                SELECT voucher_id, SUM(debit) AS d, SUM(credit) AS c
-                FROM dbo.voucher_lines
-                WHERE voucher_id IN (SELECT voucher_id FROM inserted)
-                   OR voucher_id IN (SELECT voucher_id FROM deleted)
-                GROUP BY voucher_id
-            ) x
-            WHERE ABS(x.d - x.c) > 0.01
-        )
-        BEGIN
-            RAISERROR('Voucher lines must be balanced: total debit = total credit.', 16, 1);
-            ROLLBACK TRANSACTION;
-            RETURN;
-        END
+    IF EXISTS (
+        SELECT x.voucher_id
+        FROM (
+            SELECT voucher_id, SUM(debit) AS d, SUM(credit) AS c
+            FROM dbo.voucher_lines
+            WHERE voucher_id IN (SELECT voucher_id FROM inserted)
+               OR voucher_id IN (SELECT voucher_id FROM deleted)
+            GROUP BY voucher_id
+        ) x
+        WHERE ABS(x.d - x.c) > 0.01
+    )
+    BEGIN
+        RAISERROR('Voucher lines must be balanced: total debit = total credit.', 16, 1);
+        ROLLBACK TRANSACTION;
+        RETURN;
     END
 END
+
 GO
 
 -- 25.3 GL entries: per voucher, total debit == total credit
-IF NOT EXISTS (SELECT 1 FROM sys.triggers WHERE name = 'TRG_gl_voucher_balanced')
+CREATE OR ALTER TRIGGER dbo.TRG_gl_voucher_balanced
+ON dbo.gl_entries
+AFTER INSERT, UPDATE, DELETE
+AS
 BEGIN
-    CREATE TRIGGER dbo.TRG_gl_voucher_balanced
-    ON dbo.gl_entries
-    AFTER INSERT, UPDATE, DELETE
-    AS
-    BEGIN
-        SET NOCOUNT ON;
-        IF TRIGGER_NESTLEVEL() > 1 RETURN;
+    SET NOCOUNT ON;
+    IF TRIGGER_NESTLEVEL() > 1 RETURN;
 
-        IF EXISTS (
-            SELECT x.voucher_id
-            FROM (
-                SELECT voucher_id, SUM(debit) AS d, SUM(credit) AS c
-                FROM dbo.gl_entries
-                WHERE voucher_id IS NOT NULL
-                  AND (
-                      voucher_id IN (SELECT voucher_id FROM inserted WHERE voucher_id IS NOT NULL)
-                      OR voucher_id IN (SELECT voucher_id FROM deleted WHERE voucher_id IS NOT NULL)
-                  )
-                GROUP BY voucher_id
-            ) x
-            WHERE ABS(x.d - x.c) > 0.01
-        )
-        BEGIN
-            RAISERROR('GL entries for a voucher must be balanced: total debit = total credit.', 16, 1);
-            ROLLBACK TRANSACTION;
-            RETURN;
-        END
+    IF EXISTS (
+        SELECT x.voucher_id
+        FROM (
+            SELECT voucher_id, SUM(debit) AS d, SUM(credit) AS c
+            FROM dbo.gl_entries
+            WHERE voucher_id IS NOT NULL
+              AND (
+                  voucher_id IN (SELECT voucher_id FROM inserted WHERE voucher_id IS NOT NULL)
+                  OR voucher_id IN (SELECT voucher_id FROM deleted WHERE voucher_id IS NOT NULL)
+              )
+            GROUP BY voucher_id
+        ) x
+        WHERE ABS(x.d - x.c) > 0.01
+    )
+    BEGIN
+        RAISERROR('GL entries for a voucher must be balanced: total debit = total credit.', 16, 1);
+        ROLLBACK TRANSACTION;
+        RETURN;
     END
 END
+
 GO
 
 -- 25.4 Negative stock check (when system disallows it)
-IF NOT EXISTS (SELECT 1 FROM sys.triggers WHERE name = 'TRG_stock_balances_nonneg')
+CREATE OR ALTER TRIGGER dbo.TRG_stock_balances_nonneg
+ON dbo.stock_balances
+AFTER INSERT, UPDATE
+AS
 BEGIN
-    CREATE TRIGGER dbo.TRG_stock_balances_nonneg
-    ON dbo.stock_balances
-    AFTER INSERT, UPDATE
-    AS
+    SET NOCOUNT ON;
+    IF EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1 AND allow_negative_stock = 0)
     BEGIN
-        SET NOCOUNT ON;
-        IF EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1 AND allow_negative_stock = 0)
+        IF EXISTS (SELECT 1 FROM inserted WHERE quantity < -0.0001)
         BEGIN
-            IF EXISTS (SELECT 1 FROM inserted WHERE quantity < -0.0001)
-            BEGIN
-                RAISERROR('Negative stock is not allowed. Adjust the system quantity or allow negative stock in settings.', 16, 1);
-                ROLLBACK TRANSACTION;
-                RETURN;
-            END
+            RAISERROR('Negative stock is not allowed. Adjust the system quantity or allow negative stock in settings.', 16, 1);
+            ROLLBACK TRANSACTION;
+            RETURN;
         END
     END
 END
+
 GO
 
 -- 25.5 At least one admin must always exist
-IF NOT EXISTS (SELECT 1 FROM sys.triggers WHERE name = 'TRG_users_keep_admin')
+CREATE OR ALTER TRIGGER dbo.TRG_users_keep_admin
+ON dbo.users
+AFTER UPDATE, DELETE
+AS
 BEGIN
-    CREATE TRIGGER dbo.TRG_users_keep_admin
-    ON dbo.users
-    AFTER UPDATE, DELETE
-    AS
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM dbo.users WHERE is_active = 1 AND is_admin = 1)
     BEGIN
-        SET NOCOUNT ON;
-        IF NOT EXISTS (SELECT 1 FROM dbo.users WHERE is_active = 1 AND is_admin = 1)
-        BEGIN
-            RAISERROR('At least one active admin must always exist.', 16, 1);
-            ROLLBACK TRANSACTION;
-            RETURN;
-        END
+        RAISERROR('At least one active admin must always exist.', 16, 1);
+        ROLLBACK TRANSACTION;
+        RETURN;
     END
 END
+
 GO
 
 -- 25.6 Settings: protect company_name / company_id from being changed
-IF NOT EXISTS (SELECT 1 FROM sys.triggers WHERE name = 'TRG_settings_protect_company')
+CREATE OR ALTER TRIGGER dbo.TRG_settings_protect_company
+ON dbo.settings
+AFTER UPDATE
+AS
 BEGIN
-    CREATE TRIGGER dbo.TRG_settings_protect_company
-    ON dbo.settings
-    AFTER UPDATE
-    AS
+    SET NOCOUNT ON;
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        JOIN deleted d ON i.id = d.id
+        WHERE i.company_name <> d.company_name
+           OR i.company_id <> d.company_id
+    )
     BEGIN
-        SET NOCOUNT ON;
-        IF EXISTS (
-            SELECT 1
-            FROM inserted i
-            JOIN deleted d ON i.id = d.id
-            WHERE i.company_name <> d.company_name
-               OR i.company_id <> d.company_id
-        )
-        BEGIN
-            RAISERROR('Company name and company ID are immutable from the application. Change them directly in the database if absolutely required.', 16, 1);
-            ROLLBACK TRANSACTION;
-            RETURN;
-        END
-        -- Update updated_at
-        UPDATE s SET updated_at = SYSUTCDATETIME()
-        FROM dbo.settings s
-        JOIN inserted i ON i.id = s.id;
+        RAISERROR('Company name and company ID are immutable from the application. Change them directly in the database if absolutely required.', 16, 1);
+        ROLLBACK TRANSACTION;
+        RETURN;
     END
+    -- Update updated_at
+    UPDATE s SET updated_at = SYSUTCDATETIME()
+    FROM dbo.settings s
+    JOIN inserted i ON i.id = s.id;
 END
+
 GO
 
 -- 25.7 Account type rules: group accounts can't have postings; posting accounts can't have children
-IF NOT EXISTS (SELECT 1 FROM sys.triggers WHERE name = 'TRG_accounts_rules')
+CREATE OR ALTER TRIGGER dbo.TRG_accounts_rules
+ON dbo.gl_entries
+AFTER INSERT, UPDATE
+AS
 BEGIN
-    CREATE TRIGGER dbo.TRG_accounts_rules
-    ON dbo.gl_entries
-    AFTER INSERT, UPDATE
-    AS
+    SET NOCOUNT ON;
+    IF TRIGGER_NESTLEVEL() > 1 RETURN;
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        JOIN dbo.accounts a ON a.id = i.account_id
+        WHERE a.is_group = 1
+    )
     BEGIN
-        SET NOCOUNT ON;
-        IF TRIGGER_NESTLEVEL() > 1 RETURN;
-        IF EXISTS (
-            SELECT 1
-            FROM inserted i
-            JOIN dbo.accounts a ON a.id = i.account_id
-            WHERE a.is_group = 1
-        )
-        BEGIN
-            RAISERROR('Cannot post to a group account. Only posting accounts accept ledger entries.', 16, 1);
-            ROLLBACK TRANSACTION;
-            RETURN;
-        END
+        RAISERROR('Cannot post to a group account. Only posting accounts accept ledger entries.', 16, 1);
+        ROLLBACK TRANSACTION;
+        RETURN;
     END
 END
+
 GO
 
 -- 25.8 Bill settled_amount cannot exceed net_amount
-IF NOT EXISTS (SELECT 1 FROM sys.triggers WHERE name = 'TRG_bills_settled_limit')
+CREATE OR ALTER TRIGGER dbo.TRG_bills_settled_limit
+ON dbo.bills
+AFTER INSERT, UPDATE
+AS
 BEGIN
-    CREATE TRIGGER dbo.TRG_bills_settled_limit
-    ON dbo.bills
-    AFTER INSERT, UPDATE
-    AS
+    SET NOCOUNT ON;
+    IF EXISTS (
+        SELECT 1
+        FROM inserted
+        WHERE settled_amount > net_amount + 0.01
+    )
     BEGIN
-        SET NOCOUNT ON;
-        IF EXISTS (
-            SELECT 1
-            FROM inserted
-            WHERE settled_amount > net_amount + 0.01
-        )
-        BEGIN
-            RAISERROR('Bill settled amount cannot exceed net amount.', 16, 1);
-            ROLLBACK TRANSACTION;
-            RETURN;
-        END
+        RAISERROR('Bill settled amount cannot exceed net amount.', 16, 1);
+        ROLLBACK TRANSACTION;
+        RETURN;
     END
 END
+
 GO
 
 PRINT '001_schema.sql applied successfully.';

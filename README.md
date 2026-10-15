@@ -51,11 +51,21 @@ erp/
 
 ## Database setup
 
-1. Create an empty database on your SQL Server:
-   ```sql
-   CREATE DATABASE erp;
+> **Read this carefully.** The scripts must be run in the order below. Skipping the database-creation script is the most common cause of "invalid object name" errors.
+
+1. **Create the database.** Open SQL Server Management Studio (or Azure Data Studio), connect to your SQL Server, and run:
    ```
-2. Copy `Backend/.env.example` to `Backend/.env` and set the SQL Server connection values:
+   database/000_create_db.sql
+   ```
+   This creates the `erp` database if it doesn't already exist and switches the session into it. If you connect to SQL Server with a default database other than `master`, prepend `USE master; GO` before running.
+
+2. **Apply the schema.** Run:
+   ```
+   database/001_schema.sql
+   ```
+   This creates 30+ tables, 9 invariant-enforcing triggers, ~25 indexes, and the `_migrations` tracking table. All object-creation statements are guarded with `IF NOT EXISTS`, so re-running is safe.
+
+3. Copy `Backend/.env.example` to `Backend/.env` and set the SQL Server connection values:
    ```
    DB_SERVER=localhost
    DB_PORT=1433
@@ -64,14 +74,31 @@ erp/
    DB_PASSWORD=YourStrong!Passw0rd
    ```
    Also set a strong `SESSION_SECRET` (32+ chars) and `CSRF_SECRET` (32+ chars).
-3. From the repo root, apply migrations and seeds:
+
+4. **Run first-time setup.** From the `Backend/` directory:
    ```
-   cd database
    npm install
-   npm run migrate
+   npm run build
+   npm run setup      # interactive — enters company, first branch, first fiscal year, first admin
    ```
-   This runs `001_schema.sql`, `002_seed_coa.sql` and `003_seed_units.sql` idempotently.
-   Re-running `npm run migrate` will skip already-applied scripts.
+   This inserts the singleton `settings` row, the first fiscal year, the first branch, and the first admin account. The `settings` row is required before the Chart of Accounts seed can map accounts.
+
+5. **Seed the Chart of Accounts and units.** Back in your SQL client, run:
+   ```
+   database/002_seed_coa.sql
+   database/003_seed_units.sql
+   ```
+   `002_seed_coa.sql` creates the 25+ starter accounts under the five natures and pre-maps all the required accounts (default cash, default bank, sales, sales returns, output/input sales tax, inventory, COGS, GRN clearing, purchase price variance, stock adjustment). `003_seed_units.sql` creates PCS, KG, BOX, METER.
+
+   **If you run `002_seed_coa.sql` before first-time setup**, it will print a clear "skipping" message and exit without raising an error. Run the Node setup, then re-run `002_seed_coa.sql`.
+
+6. **(Optional) Re-run via the Node migration runner.** Once `.env` is in place, from the `database/` directory:
+   ```
+   npm install
+   npm run migrate        # idempotent — skips already-applied scripts
+   npm run migrate -- --seed
+   ```
+   The Node runner wraps each `.sql` file in a transaction, so a failure rolls the whole script back without leaving half-applied schema. The `_migrations` table tracks which scripts have been applied.
 
 ## Backend
 
@@ -164,6 +191,14 @@ This section records choices made when the spec left a detail open, per the brie
 12. **`sys.triggers` `IF NOT EXISTS` guards** make every script idempotent so the migration runner can be safely re-run. Re-running `npm run migrate` will report `[skip]` for already-applied scripts and `[ok]` only for new ones.
 
 13. **Audit log is append-only.** An `INSTEAD OF UPDATE, DELETE` trigger rejects mutations. To satisfy the spec's "restricted DB role if possible" recommendation, also grant the application a role that has `INSERT` on `audit_log` but no `UPDATE`/`DELETE`; the trigger is the belt-and-braces backstop.
+
+14. **Triggers use `CREATE OR ALTER TRIGGER`** (not `IF NOT EXISTS ... BEGIN CREATE TRIGGER ... END`). SQL Server requires `CREATE TRIGGER` to be the only statement in its batch — wrapping it in an `IF` block produces "Incorrect syntax near the keyword 'TRIGGER'". `CREATE OR ALTER` (SQL Server 2016 SP1+) is idempotent and is the only statement in its GO batch.
+
+15. **`ROWVERSION` (one word) is the correct SQL Server type** for optimistic-concurrency row version columns, not `ROW_VERSION`. The schema originally had `ROW_VERSION` which produced "Cannot find data type ROW_VERSION" errors and cascaded into "invalid table" errors on every foreign key that referenced those tables. The migration runner now uses the correct `ROWVERSION` everywhere.
+
+16. **`000_create_db.sql` creates the database itself.** The spec didn't ask for this, but running `001_schema.sql` directly against the SQL Server without first creating the database produces "invalid object name" errors on every table. Run `000_create_db.sql` first; it `USE`s the new database and subsequent scripts run against it.
+
+17. **`002_seed_coa.sql` skips gracefully if the `settings` row doesn't exist** (prints a clear message and `RETURN`s without raising an error), instead of using `RAISERROR` severity 16. This is because the settings row is created by the Node first-time setup, not by the SQL scripts — so the user is expected to run `001` → `npm run setup` → `002` → `003`. An error-level raise would have made the Node migration runner report failure on `002` and roll back even though nothing was actually wrong.
 
 ## Roadmap (in progress)
 

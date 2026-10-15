@@ -13,7 +13,9 @@ SET XACT_ABORT ON;
 
 IF NOT EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1)
 BEGIN
-    RAISERROR('Settings row does not exist. Run first-time setup (npm run setup) before seeding the Chart of Accounts.', 16, 1);
+    PRINT 'Skipping 002_seed_coa.sql: settings row does not exist yet.';
+    PRINT '  Run first-time setup via the backend (cd Backend && npm run setup),';
+    PRINT '  then re-run this seed script. The Chart of Accounts will be created then.';
     RETURN;
 END
 GO
