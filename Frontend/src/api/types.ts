@@ -56,3 +56,19 @@ export interface Store {
   taggedBranches?: number[];
   children?: Store[];
 }
+
+export interface ProductNode {
+  id: number;
+  code: string;
+  parentId: number | null;
+  level: number;
+  name: string;
+  unitId: number | null;
+  salesTaxPct: number;
+  reorderLevel: number;
+  purchasePrice: number;
+  salesPrice: number;
+  isGroup: boolean;
+  isActive: boolean;
+  children?: ProductNode[];
+}

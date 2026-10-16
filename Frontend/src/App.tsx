@@ -28,6 +28,11 @@ import SalesDashboard from './pages/dashboards/SalesDashboard';
 import PurchaseDashboard from './pages/dashboards/PurchaseDashboard';
 import ReceivablesPayablesDashboard from './pages/dashboards/ReceivablesPayablesDashboard';
 import StockDashboard from './pages/dashboards/StockDashboard';
+import OpeningStock from './pages/OpeningStock';
+import MoveStock from './pages/MoveStock';
+import AdjustStock from './pages/AdjustStock';
+import StockLedgerPage from './pages/StockLedger';
+import InventoryReportPage from './pages/InventoryReport';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -126,11 +131,11 @@ export default function App() {
 
         {/* Inventory */}
         <Route path="/inventory/products" element={<Products />} />
-        <Route path="/inventory/opening-stock" element={<ComingSoon title="Opening Stock" />} />
-        <Route path="/inventory/moves" element={<ComingSoon title="Move Stock" />} />
-        <Route path="/inventory/adjustments" element={<ComingSoon title="Adjust Stock" />} />
-        <Route path="/inventory/stock-ledger" element={<ComingSoon title="Stock / Product Ledger" />} />
-        <Route path="/inventory/reports/inventory" element={<ComingSoon title="Inventory Report" />} />
+        <Route path="/inventory/opening-stock" element={<OpeningStock />} />
+        <Route path="/inventory/moves" element={<MoveStock />} />
+        <Route path="/inventory/adjustments" element={<AdjustStock />} />
+        <Route path="/inventory/stock-ledger" element={<StockLedgerPage />} />
+        <Route path="/inventory/reports/inventory" element={<InventoryReportPage />} />
         <Route path="/inventory/reports/movement" element={<ComingSoon title="Movement Report" />} />
         <Route path="/inventory/reports/adjustment" element={<ComingSoon title="Adjustment Report" />} />
 
