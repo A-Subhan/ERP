@@ -44,3 +44,15 @@ export interface Unit {
   name: string;
   isActive: boolean;
 }
+
+export interface Store {
+  id: number;
+  code: string;
+  parentId: number | null;
+  level: number;
+  name: string;
+  storeType: 'GROUP' | 'STOCK';
+  isActive: boolean;
+  taggedBranches?: number[];
+  children?: Store[];
+}
