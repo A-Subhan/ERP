@@ -44,12 +44,44 @@ export default function Reports({ kind }: { kind: ReportKind }) {
     finally { setLoading(false); }
   };
 
+  const buildQuery = () => {
+    const params: any = {};
+    if (branchId) params.branchId = String(branchId);
+    if (meta.needsDateRange) { params.fromDate = fromDate; params.toDate = toDate; }
+    if (meta.needsAsOf) params.asOfDate = asOfDate;
+    if (kind === 'trial-balance' && hideZero) params.hideZeroRows = 'true';
+    return new URLSearchParams(params).toString();
+  };
+
+  const exportReport = async (fmt: 'pdf' | 'xlsx' | 'csv' | 'docx') => {
+    setError('');
+    try {
+      const q = buildQuery();
+      const r = await fetch(`/api/reports/${kind}/export?format=${fmt}&${q}`, { credentials: 'same-origin' });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({ error: 'Export failed.' }));
+        throw new Error(e.error || 'Export failed.');
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cd = r.headers.get('content-disposition');
+      const m = cd && cd.match(/filename="?([^";]+)"?/i);
+      a.download = (m && m[1]) || `${kind}.${fmt}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Export failed.'); }
+  };
+
   return (
     <div className="page">
       <div className="page-header">
         <div>
           <div className="page-title">{meta.title}</div>
-          <div className="page-subtitle">Filters below. Run to load on screen; exports to come.</div>
+          <div className="page-subtitle">Filters below. Run to load on screen; PDF / Excel / CSV / Word export via the buttons on the right.</div>
         </div>
       </div>
 
@@ -91,8 +123,12 @@ export default function Reports({ kind }: { kind: ReportKind }) {
               </div>
             )}
           </div>
-          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button className="btn btn-primary" onClick={run} disabled={loading}>{loading ? 'Running…' : 'Run report'}</button>
+            <button className="btn" disabled={!data || loading} onClick={() => exportReport('pdf')}>PDF</button>
+            <button className="btn" disabled={!data || loading} onClick={() => exportReport('xlsx')}>Excel</button>
+            <button className="btn" disabled={!data || loading} onClick={() => exportReport('csv')}>CSV</button>
+            <button className="btn" disabled={!data || loading} onClick={() => exportReport('docx')}>Word</button>
           </div>
         </div>
       </div>
