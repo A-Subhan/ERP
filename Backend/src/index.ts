@@ -19,6 +19,12 @@ import { authRouter } from './routes/auth.routes';
 import { branchRouter } from './routes/branch.routes';
 import { unitRouter } from './routes/unit.routes';
 import { accountRouter } from './routes/account.routes';
+import { storeRouter } from './routes/store.routes';
+import { productRouter } from './routes/product.routes';
+import { taxHeadRouter } from './routes/taxHead.routes';
+import { voucherRouter } from './routes/voucher.routes';
+import { reportRouter } from './routes/report.routes';
+import { auditLogRouter } from './routes/auditLog.routes';
 import { userRouter } from './routes/user.routes';
 
 async function bootstrap(): Promise<void> {
@@ -94,6 +100,12 @@ async function bootstrap(): Promise<void> {
   app.use('/api/branches', branchRouter);
   app.use('/api/units', unitRouter);
   app.use('/api/accounts', accountRouter);
+  app.use('/api/stores', storeRouter);
+  app.use('/api/products', productRouter);
+  app.use('/api/tax-heads', taxHeadRouter);
+  app.use('/api/vouchers', voucherRouter);
+  app.use('/api/reports', reportRouter);
+  app.use('/api/audit-log', auditLogRouter);
   app.use('/api/users', userRouter);
 
   // Health
