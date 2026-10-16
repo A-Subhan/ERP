@@ -33,6 +33,9 @@ import MoveStock from './pages/MoveStock';
 import AdjustStock from './pages/AdjustStock';
 import StockLedgerPage from './pages/StockLedger';
 import InventoryReportPage from './pages/InventoryReport';
+import OpeningTrialBalance from './pages/OpeningTrialBalance';
+import UpdateChequeStatus from './pages/UpdateChequeStatus';
+import BankReconciliation from './pages/BankReconciliation';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -100,9 +103,9 @@ export default function App() {
         <Route path="/finance/bank-receipt" element={<Vouchers voucherType="BRV" />} />
         <Route path="/finance/bank-payment" element={<Vouchers voucherType="BPV" />} />
         <Route path="/finance/journal-voucher" element={<Vouchers voucherType="JV" />} />
-        <Route path="/finance/opening-trial-balance" element={<ComingSoon title="Opening Trial Balance" />} />
-        <Route path="/finance/bank-reconciliation" element={<ComingSoon title="Bank Reconciliation" />} />
-        <Route path="/finance/update-cheque-status" element={<ComingSoon title="Update Cheque Status" />} />
+        <Route path="/finance/opening-trial-balance" element={<OpeningTrialBalance />} />
+        <Route path="/finance/bank-reconciliation" element={<BankReconciliation />} />
+        <Route path="/finance/update-cheque-status" element={<UpdateChequeStatus />} />
         <Route path="/finance/chart-of-accounts" element={<ChartOfAccounts />} />
         <Route path="/finance/tax-heads" element={<TaxHeads />} />
         <Route path="/finance/reports/general-ledger" element={<Reports kind="general-ledger" />} />

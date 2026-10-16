@@ -27,6 +27,7 @@ import { taxHeadRouter } from './routes/taxHead.routes';
 import { voucherRouter } from './routes/voucher.routes';
 import { reportRouter } from './routes/report.routes';
 import { inventoryRouter } from './routes/inventory.routes';
+import { financeRouter } from './routes/finance.routes';
 import { auditLogRouter } from './routes/auditLog.routes';
 import { settingsRouter } from './routes/settings.routes';
 import { dashboardRouter } from './routes/dashboard.routes';
@@ -104,6 +105,7 @@ async function bootstrap(): Promise<void> {
   app.use('/api/vouchers', voucherRouter);
   app.use('/api/reports', reportRouter);
   app.use('/api/inventory', inventoryRouter);
+  app.use('/api/finance', financeRouter);
   app.use('/api/audit-log', auditLogRouter);
   app.use('/api/settings', settingsRouter);
   app.use('/api/dashboards', dashboardRouter);
