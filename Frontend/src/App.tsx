@@ -75,6 +75,8 @@ export default function App() {
 
   return (
     <Layout user={user} onLogout={() => setUser(null)}>
+      {/* After sign-in the app re-renders inside the layout; send /login home */}
+      {location.pathname === '/login' && <Navigate to="/" replace />}
       <Routes>
         {/* Dashboards */}
         <Route path="/" element={<Dashboard />} />

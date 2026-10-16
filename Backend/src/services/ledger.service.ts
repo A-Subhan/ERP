@@ -178,16 +178,19 @@ export async function reverseVoucher(voucherId: number, txc: Txc): Promise<void>
     .input('vid', sql.BigInt, voucherId)
     .query(`UPDATE dbo.vouchers SET status = 'REVERSED' WHERE id = @vid`);
 
-  // Release any allocations on the bills
+  // Release any allocations on the bills — per bill, not the voucher total
   await txc.req()
     .input('vid', sql.BigInt, voucherId)
     .query(`
-      UPDATE dbo.bills
-      SET settled_amount = settled_amount - (
-        SELECT ISNULL(SUM(amount_applied), 0) FROM dbo.voucher_lines
+      UPDATE b
+      SET b.settled_amount = b.settled_amount - applied.total
+      FROM dbo.bills b
+      JOIN (
+        SELECT bill_id, SUM(amount_applied) AS total
+        FROM dbo.voucher_lines
         WHERE voucher_id = @vid AND bill_id IS NOT NULL
-      )
-      WHERE id IN (SELECT bill_id FROM dbo.voucher_lines WHERE voucher_id = @vid AND bill_id IS NOT NULL)
+        GROUP BY bill_id
+      ) applied ON applied.bill_id = b.id
     `);
 
   // Post the reversing entry
