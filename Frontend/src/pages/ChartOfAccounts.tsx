@@ -423,11 +423,7 @@ function AccountDetailsModal({
           )}
 
           {activeTab === 'photos' && (
-            <div className="empty-state">
-              Photo upload for NIC, person, and two custom-labelled photos is on the next pass.
-              The schema fields (nic_photo_path, person_photo_path, photo1_path, photo2_path) and the
-              account_details.setPhoto service are already in place.
-            </div>
+            <PhotosTab account={account} details={d} onChanged={() => {/* parent refetches on save */}} />
           )}
 
           {activeTab === 'budget' && (
@@ -458,4 +454,115 @@ function flattenBranches(nodes: any[]): any[] {
   const out: any[] = [];
   const walk = (ns: any[]) => { for (const n of ns) { out.push(n); if (n.children) walk(n.children); } };
   walk(nodes); return out;
+}
+
+// ---------------------------------------------------------------------------
+// Photos tab — upload, view, replace, remove. Authenticated via cookie.
+// ---------------------------------------------------------------------------
+const PHOTO_SLOTS: Array<{ field: 'nicPhotoPath' | 'personPhotoPath' | 'photo1Path' | 'photo2Path'; label: string; hasCustomLabel?: boolean }> = [
+  { field: 'nicPhotoPath', label: 'NIC photo' },
+  { field: 'personPhotoPath', label: "Person's photo" },
+  { field: 'photo1Path', label: 'Photo 1', hasCustomLabel: true },
+  { field: 'photo2Path', label: 'Photo 2', hasCustomLabel: true },
+];
+
+function PhotosTab({ account, details, onChanged }: { account: Account; details: any; onChanged: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [labels, setLabels] = useState<{ photo1Label: string; photo2Label: string }>({
+    photo1Label: details.photo1Label || '',
+    photo2Label: details.photo2Label || '',
+  });
+
+  const upload = async (field: typeof PHOTO_SLOTS[number]['field'], file: File) => {
+    setBusy(field); setError('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (field === 'photo1Path' || field === 'photo2Path') {
+        fd.append('label', labels[(field + 'Label') as 'photo1Label' | 'photo2Label'] || '');
+      }
+      const r = await fetch(`/api/accounts/${account.code}/photo/${field}`, {
+        method: 'POST',
+        body: fd,
+        credentials: 'same-origin',
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({ error: 'Upload failed.' }));
+        throw new Error(e.error || 'Upload failed.');
+      }
+      onChanged();
+    } catch (err) { setError(err instanceof Error ? err.message : 'Upload failed.'); }
+    finally { setBusy(null); }
+  };
+
+  const remove = async (field: typeof PHOTO_SLOTS[number]['field']) => {
+    if (!confirm('Remove this photo?')) return;
+    setBusy(field); setError('');
+    try {
+      const r = await fetch(`/api/accounts/${account.code}/photo/${field}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({ error: 'Remove failed.' }));
+        throw new Error(e.error || 'Remove failed.');
+      }
+      onChanged();
+    } catch (err) { setError(err instanceof Error ? err.message : 'Remove failed.'); }
+    finally { setBusy(null); }
+  };
+
+  return (
+    <div>
+      <p className="text-muted" style={{ marginBottom: 12 }}>
+        Accepts JPG, PNG and WebP up to 3 MB each. Files are stored on the server under <code>uploads/account_photos/</code>.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+        {PHOTO_SLOTS.map((slot) => {
+          const path = details[slot.field];
+          const url = path ? `/api/accounts/${account.code}/photo/${slot.field}` : null;
+          const displayLabel = slot.hasCustomLabel ? labels[(slot.field + 'Label') as 'photo1Label' | 'photo2Label'] || slot.label : slot.label;
+          return (
+            <div key={slot.field} className="panel" style={{ marginBottom: 0 }}>
+              <div className="panel-head">{displayLabel}</div>
+              <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {slot.hasCustomLabel && (
+                  <input
+                    className="field-input"
+                    placeholder={`Label for ${slot.label}`}
+                    value={labels[(slot.field + 'Label') as 'photo1Label' | 'photo2Label']}
+                    onChange={(e) => setLabels((prev) => ({ ...prev, [(slot.field + 'Label') as 'photo1Label' | 'photo2Label']: e.target.value }))}
+                  />
+                )}
+                {url ? (
+                  <a href={url} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
+                    <img src={url} alt={displayLabel} style={{ maxWidth: '100%', maxHeight: 180, border: '1px solid var(--c-border)', borderRadius: 4 }} />
+                  </a>
+                ) : (
+                  <div className="empty-state" style={{ padding: 16 }}>No photo uploaded.</div>
+                )}
+                <div className="row" style={{ gap: 8 }}>
+                  <label className="btn btn-sm" style={{ cursor: 'pointer' }}>
+                    {busy === slot.field ? 'Uploading…' : (path ? 'Replace' : 'Upload')}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      style={{ display: 'none' }}
+                      disabled={busy !== null}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(slot.field, f); e.target.value = ''; }}
+                    />
+                  </label>
+                  {path && (
+                    <button className="btn btn-sm btn-danger" onClick={() => remove(slot.field)} disabled={busy !== null}>Remove</button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {error && <div className="inline-error" style={{ marginTop: 12 }}>{error}</div>}
+    </div>
+  );
 }
