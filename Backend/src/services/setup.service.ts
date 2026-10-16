@@ -28,20 +28,44 @@ export async function isSetupDone(): Promise<boolean> {
   return r.recordset.length > 0;
 }
 
+/**
+ * Check whether a company ID has ever been used in a previous setup.
+ *
+ * Per change request #2: comparison is CASE-INSENSITIVE and ignores
+ * interior spaces. So "ACME 001", "acme001", "Acme 001" all collide.
+ *
+ * Implementation:
+ *   1. Live check: SQL Server unique index UQ_settings_normalized_company_id
+ *      on the computed column normalized_company_id (= UPPER(REPLACE(company_id, ' ', '')))
+ *      enforces this at the DB level — the INSERT/UPDATE will fail with a
+ *      unique-constraint violation if a duplicate is attempted.
+ *   2. Pre-flight check here: scan settings + audit_log using the same
+ *      normalisation, so the user gets a friendly message before the DB
+ *      rejects the insert.
+ */
 export async function isCompanyIdTaken(companyId: string): Promise<boolean> {
   const pool = await getPool();
+  const normalized = (companyId || '').toUpperCase().replace(/\s+/g, '');
+
+  // Live settings row?
   const cur = await pool.request()
-    .input('cid', sql.NVarChar, companyId)
-    .query(`SELECT 1 FROM dbo.settings WHERE company_id = @cid`);
+    .input('norm', sql.VarChar, normalized)
+    .query(`
+      SELECT 1 FROM dbo.settings
+      WHERE UPPER(REPLACE(company_id, ' ', '')) = @norm
+    `);
   if (cur.recordset.length > 0) return true;
+
+  // Prior setup attempt (audit log)? The audit_log stores after_values as JSON
+  // like {"companyName": "...", "companyId": "..."}. Normalise and compare.
   const prior = await pool.request()
-    .input('cid', sql.NVarChar, companyId)
+    .input('norm', sql.VarChar, normalized)
     .query(`
       SELECT 1
       FROM dbo.audit_log
       WHERE action = 'CREATE'
         AND record_type = 'Company'
-        AND JSON_VALUE(after_values, '$.companyId') = @cid
+        AND UPPER(REPLACE(JSON_VALUE(after_values, '$.companyId'), ' ', '')) = @norm
     `);
   return prior.recordset.length > 0;
 }

@@ -1,6 +1,9 @@
 /* ===========================================================================
  * ERP Backend — application entry
- * Express 4 + session + CSRF + helmet + rate-limit + pino + mssql
+ * Express 4 + session + CSRF + helmet + pino + mssql
+ *
+ * Per change request #17: NO login rate limiter. Failed logins are still
+ * audited (action = LOGIN_FAILED) but the password is never recorded.
  * ==========================================================================*/
 import path from 'path';
 import express from 'express';
@@ -8,7 +11,6 @@ import session from 'express-session';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
 import { config } from './config';
 import { logger } from './utils/logger';
 import { getPool } from './db/pool';
@@ -84,16 +86,9 @@ async function bootstrap(): Promise<void> {
   // CSRF on everything except GET/HEAD/OPTIONS and explicitly-skipped routes
   app.use(csrfMiddleware);
 
-  // Rate-limit the login endpoint
-  const loginLimiter = rateLimit({
-    windowMs: config.security.loginRateLimitWindowMs,
-    max: config.security.loginRateLimitMax,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Too many login attempts. Try again later.' },
-  });
-  app.use('/api/login', loginLimiter);
-  app.use('/api/setup', loginLimiter);
+  // NOTE: Login rate limiting was REMOVED per change request #17. A user may
+  // attempt to sign in any number of times. Failed attempts are still audited
+  // (action = LOGIN_FAILED) and the password is never recorded.
 
   // --- Routes ---
   app.use('/api', authRouter);

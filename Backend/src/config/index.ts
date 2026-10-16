@@ -48,11 +48,11 @@ export const config = {
   csrf: {
     secret: str('CSRF_SECRET', 'change-me-csrf-32-chars-please'),
   },
-  security: {
-    bcryptRounds: num('BCRYPT_ROUNDS', 12),
-    loginRateLimitWindowMs: num('LOGIN_RATE_LIMIT_WINDOW_MS', 15 * 60 * 1000),
-    loginRateLimitMax: num('LOGIN_RATE_LIMIT_MAX', 10),
-  },
+  // NOTE: login rate limiting was removed per change request #17. The
+  // security object is kept for forward compatibility but holds no
+  // rate-limit fields. Failed logins are audited (LOGIN_FAILED), never
+  // blocked automatically.
+  security: {},
   setupCompleted: bool('SETUP_COMPLETED', false),
 };
 

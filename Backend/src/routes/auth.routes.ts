@@ -81,7 +81,6 @@ authRouter.post('/login', skipCsrf, validateBody(loginSchema), async (req, res, 
     res.json({
       ok: true,
       user: result.user,
-      needsPasswordChange: result.needsPasswordChange,
     });
   } catch (err) { next(err); }
 });

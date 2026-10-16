@@ -31,6 +31,8 @@ BEGIN
         id                  TINYINT         NOT NULL CONSTRAINT PK_settings PRIMARY KEY CHECK (id = 1),
         company_name        NVARCHAR(200)   NOT NULL,
         company_id          NVARCHAR(50)    NOT NULL,
+        -- Normalised form (case-insensitive, spaces stripped) for unique enforcement
+        normalized_company_id AS (UPPER(REPLACE(company_id, ' ', ''))),
         address             NVARCHAR(500)   NULL,
         phone               NVARCHAR(50)    NULL,
         email               NVARCHAR(100)   NULL,
@@ -73,6 +75,12 @@ BEGIN
         CONSTRAINT UQ_settings_singleton CHECK (id = 1)
     );
 END
+GO
+
+-- Unique index on the normalized company ID (case-insensitive, spaces stripped)
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UQ_settings_normalized_company_id')
+    CREATE UNIQUE NONCLUSTERED INDEX UQ_settings_normalized_company_id
+        ON dbo.settings(normalized_company_id);
 GO
 
 -- ============================================================================
@@ -475,8 +483,6 @@ BEGIN
         allowed_stores_csv  VARCHAR(500) NULL,
         row_version     ROWVERSION  NOT NULL,
         last_login_at   DATETIME2     NULL,
-        failed_login_count INT        NOT NULL DEFAULT 0,
-        locked_until    DATETIME2     NULL,
         created_at      DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
         updated_at      DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
         CONSTRAINT UQ_users_display_id UNIQUE (display_id),

@@ -1,6 +1,14 @@
 /* ===========================================================================
  * Auth service — login, logout, change password, current user.
- * Plain-text password storage per change request #2 — no hashing, no argon2.
+ *
+ * Per change request #17: NO login attempt limit, NO account lockout, NO rate
+ * limiter. A user can try any number of times. Failed logins are still
+ * written to the audit log (action = LOGIN_FAILED) — never the password.
+ *
+ * Per change request #18: deactivated users are refused with the message
+ * "This account is inactive. Contact the administrator."
+ *
+ * Per change request #6: passwords are stored and compared as plain text.
  * ==========================================================================*/
 import { getPool, sql } from '../db/pool';
 import { audit } from '../utils/audit';
@@ -8,20 +16,15 @@ import { audit } from '../utils/audit';
 export interface LoginResult {
   ok: boolean;
   error?: string;
-  needsPasswordChange?: boolean;
   user?: { id: number; username: string; fullName: string; isAdmin: boolean };
 }
-
-const MAX_FAILED = 5;
-const LOCK_MINUTES = 15;
 
 export async function login(username: string, password: string, ip: string | null): Promise<LoginResult> {
   const pool = await getPool();
   const r = await pool.request()
     .input('uname', sql.NVarChar, username)
     .query(`
-      SELECT id, display_id, username, full_name, password, is_active, is_admin,
-             failed_login_count, locked_until
+      SELECT id, display_id, username, full_name, password, is_active, is_admin
       FROM dbo.users
       WHERE username = @uname
     `);
@@ -31,35 +34,27 @@ export async function login(username: string, password: string, ip: string | nul
     return { ok: false, error: 'Username or password is not correct.' };
   }
   const u = r.recordset[0];
+
+  // Deactivated users are refused with a plain message. No lockout, no count.
   if (!u.is_active) {
-    return { ok: false, error: 'This account is not active. Contact your administrator.' };
-  }
-  if (u.locked_until && new Date(u.locked_until) > new Date()) {
-    return { ok: false, error: 'This account is temporarily locked. Try again later.' };
+    return { ok: false, error: 'This account is inactive. Contact the administrator.' };
   }
 
   // Plain-text comparison per change request #2.
   const valid = (password === u.password);
 
   if (!valid) {
-    const nextFailed = u.failed_login_count + 1;
-    const lockUntil = nextFailed >= MAX_FAILED
-      ? new Date(Date.now() + LOCK_MINUTES * 60_000)
-      : null;
-    await pool.request()
-      .input('uid', sql.Int, u.id)
-      .input('cnt', sql.Int, nextFailed)
-      .input('lock', sql.DateTime2, lockUntil)
-      .query(`UPDATE dbo.users SET failed_login_count = @cnt, locked_until = @lock WHERE id = @uid`);
+    // Still audited, never locked.
     await audit({ userId: u.id, userName: u.username, ip }, 'LOGIN', 'LOGIN_FAILED',
       'User', String(u.id), null, null, { username });
     return { ok: false, error: 'Username or password is not correct.' };
   }
 
+  // Success — record last login timestamp.
   await pool.request()
     .input('uid', sql.Int, u.id)
     .input('now', sql.DateTime2, new Date())
-    .query(`UPDATE dbo.users SET failed_login_count = 0, locked_until = NULL, last_login_at = @now WHERE id = @uid`);
+    .query(`UPDATE dbo.users SET last_login_at = @now WHERE id = @uid`);
 
   await audit({ userId: u.id, userName: u.username, ip }, 'LOGIN', 'LOGIN', 'User', String(u.id), null, null, null);
 
@@ -92,7 +87,7 @@ export async function changePassword(userId: number, oldPassword: string, newPas
 export async function resetPassword(adminId: number, targetUserId: number, newPassword: string): Promise<void> {
   if (!newPassword || newPassword.length < 1) throw new Error('New password must not be empty.');
   const pool = await getPool();
-  // NOTE: record only "password was reset" in audit — never the password value.
+  // NOTE: audit records only "password was reset" — never the password value.
   await pool.request()
     .input('uid', sql.Int, targetUserId)
     .input('pw', sql.NVarChar, newPassword)
