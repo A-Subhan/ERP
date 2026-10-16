@@ -51,10 +51,10 @@ export async function createBill(input: CreateBillInput, txc: Txc): Promise<numb
       INSERT INTO dbo.bills
         (bill_no, bill_type, party_account_code, ref_doc_type, ref_doc_id, branch_id,
          doc_date, due_date, gross_amount, tax_amount, net_amount, settled_amount)
-      OUTPUT INSERTED.id
-      VALUES (@no, @bt, @party, @rdt, @rdi, @bid, @dd, @due, @gross, @tax, @net, 0)
+      VALUES (@no, @bt, @party, @rdt, @rdi, @bid, @dd, @due, @gross, @tax, @net, 0);
+      SELECT CAST(SCOPE_IDENTITY() AS BIGINT) AS id;
     `);
-  return r.recordset[0].id;
+  return Number(r.recordset[0].id);
 }
 
 export interface OpenBill {
@@ -75,7 +75,8 @@ export async function getOpenBills(partyAccountCode: string, branchId?: number |
     .input('party', sql.VarChar, partyAccountCode)
     .input('bid', sql.Int, branchId ?? null)
     .query(`
-      SELECT id, bill_no, bill_type, doc_date, due_date, net_amount, settled_amount,
+      SELECT id, bill_no AS billNo, bill_type AS billType, doc_date AS docDate, due_date AS dueDate,
+             net_amount AS netAmount, settled_amount AS settledAmount,
              (net_amount - settled_amount) AS outstanding
       FROM dbo.bills
       WHERE party_account_code = @party
@@ -83,7 +84,14 @@ export async function getOpenBills(partyAccountCode: string, branchId?: number |
         AND (@bid IS NULL OR branch_id = @bid)
       ORDER BY doc_date, id
     `);
-  return r.recordset;
+  // BIGINT columns arrive as strings from the driver — coerce for the UI/API
+  return r.recordset.map((b: any) => ({
+    ...b,
+    id: Number(b.id),
+    netAmount: Number(b.netAmount),
+    settledAmount: Number(b.settledAmount),
+    outstanding: Number(b.outstanding),
+  }));
 }
 
 /** Unapplied advance total for a party (receipts/payments with no bill applied). */

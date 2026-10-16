@@ -71,6 +71,25 @@ export async function postEntry(input: PostEntryInput, txc: Txc): Promise<{ vouc
     }
   }
 
+  // Code-level account guards (the DB trigger is the backstop). Gives callers
+  // a plain message instead of the trigger's batch-abort error.
+  {
+    const codes = Array.from(new Set(input.lines.map((l) => l.accountCode)));
+    const req = txc.req();
+    codes.forEach((c, i) => req.input(`c${i}`, sql.VarChar, c));
+    const accs = await req.query(`
+      SELECT code, is_group, is_active FROM dbo.accounts
+      WHERE code IN (${codes.map((_, i) => `@c${i}`).join(', ')})
+    `);
+    const byCode = new Map(accs.recordset.map((a: any) => [a.code, a]));
+    for (const c of codes) {
+      const a = byCode.get(c);
+      if (!a) throw new Error(`Account ${c} does not exist.`);
+      if (a.is_group) throw new Error('Cannot post to a group account. Only posting accounts accept ledger entries.');
+      if (!a.is_active) throw new Error('Cannot post to an inactive account. Activate the account first.');
+    }
+  }
+
   // Insert voucher header
   const vR = await txc.req()
     .input('vno', sql.VarChar, input.voucherNo)
@@ -100,53 +119,57 @@ export async function postEntry(input: PostEntryInput, txc: Txc): Promise<{ vouc
          cash_account_code, bank_account_code, payment_type, cheque_no, cheque_date, cheque_bank_name, cheque_status,
          reference, narration, tax_head_id, tax_percentage, gross_amount, tax_amount, net_amount,
          counter_account_code, status, created_by)
-      OUTPUT INSERTED.id
       VALUES (@vno, @vtype, @ddate, @fyid, @bid,
               @cash, @bank, @pt, @cno, @cdate, @cbn, @cstat,
               @ref, @narr, @thid, @tpct, @gross, @tax, @net,
-              @cacct, 'POSTED', @cb)
+              @cacct, 'POSTED', @cb);
+      SELECT CAST(SCOPE_IDENTITY() AS BIGINT) AS id;
     `);
-  const voucherId = vR.recordset[0].id;
+  const voucherId = Number(vR.recordset[0].id);
 
-  // Insert voucher lines
-  for (let i = 0; i < input.lines.length; i++) {
-    const l = input.lines[i];
-    await txc.req()
-      .input('vid', sql.BigInt, voucherId)
-      .input('ln', sql.Int, i + 1)
-      .input('ac', sql.VarChar, l.accountCode)
-      .input('d', sql.Decimal(18,2), round2(l.debit))
-      .input('c', sql.Decimal(18,2), round2(l.credit))
-      .input('lnarr', sql.NVarChar, l.narration ?? null)
-      .input('bid', sql.BigInt, l.billId ?? null)
-      .input('aa', sql.Decimal(18,2), l.billId ? round2(Math.min(l.debit, l.credit)) : null)
-      .query(`
-        INSERT INTO dbo.voucher_lines (voucher_id, line_no, account_code, debit, credit, line_narration, bill_id, amount_applied)
-        VALUES (@vid, @ln, @ac, @d, @c, @lnarr, @bid, @aa)
-      `);
+  // Insert all voucher lines in ONE statement — the balance trigger is
+  // statement-level and must see the complete entry.
+  {
+    const req = txc.req().input('vid', sql.BigInt, voucherId);
+    const values = input.lines.map((l, i) => {
+      req.input(`ln${i}`, sql.Int, i + 1)
+        .input(`ac${i}`, sql.VarChar, l.accountCode)
+        .input(`d${i}`, sql.Decimal(18, 2), round2(l.debit))
+        .input(`c${i}`, sql.Decimal(18, 2), round2(l.credit))
+        .input(`n${i}`, sql.NVarChar, l.narration ?? null)
+        .input(`b${i}`, sql.BigInt, l.billId ?? null)
+        .input(`a${i}`, sql.Decimal(18, 2), l.billId ? round2(Math.min(l.debit, l.credit)) : null);
+      return `(@vid, @ln${i}, @ac${i}, @d${i}, @c${i}, @n${i}, @b${i}, @a${i})`;
+    }).join(', ');
+    await req.query(`
+      INSERT INTO dbo.voucher_lines (voucher_id, line_no, account_code, debit, credit, line_narration, bill_id, amount_applied)
+      VALUES ${values}
+    `);
   }
 
-  // Insert GL entries (mirror the lines)
-  for (let i = 0; i < input.lines.length; i++) {
-    const l = input.lines[i];
-    await txc.req()
+  // Insert GL entries (mirror the lines) in ONE statement
+  {
+    const req = txc.req()
       .input('vid', sql.BigInt, voucherId)
       .input('rdt', sql.VarChar, input.refDocType ?? null)
       .input('rdi', sql.BigInt, input.refDocId ?? null)
       .input('ed', sql.Date, input.docDate)
       .input('fyid', sql.Int, input.fiscalYearId)
-      .input('bid', sql.Int, input.branchId)
-      .input('ac', sql.VarChar, l.accountCode)
-      .input('d', sql.Decimal(18,2), round2(l.debit))
-      .input('c', sql.Decimal(18,2), round2(l.credit))
-      .input('narr', sql.NVarChar, l.narration ?? input.narration ?? null)
-      .input('blid', sql.BigInt, l.billId ?? null)
-      .query(`
-        INSERT INTO dbo.gl_entries
-          (voucher_id, ref_doc_type, ref_doc_id, entry_date, fiscal_year_id, branch_id,
-           account_code, debit, credit, narration, bill_id, is_opening)
-        VALUES (@vid, @rdt, @rdi, @ed, @fyid, @bid, @ac, @d, @c, @narr, @blid, 0)
-      `);
+      .input('bid', sql.Int, input.branchId);
+    const values = input.lines.map((l, i) => {
+      req.input(`ac${i}`, sql.VarChar, l.accountCode)
+        .input(`d${i}`, sql.Decimal(18, 2), round2(l.debit))
+        .input(`c${i}`, sql.Decimal(18, 2), round2(l.credit))
+        .input(`n${i}`, sql.NVarChar, l.narration ?? input.narration ?? null)
+        .input(`bl${i}`, sql.BigInt, l.billId ?? null);
+      return `(@vid, @rdt, @rdi, @ed, @fyid, @bid, @ac${i}, @d${i}, @c${i}, @n${i}, @bl${i}, 0)`;
+    }).join(', ');
+    await req.query(`
+      INSERT INTO dbo.gl_entries
+        (voucher_id, ref_doc_type, ref_doc_id, entry_date, fiscal_year_id, branch_id,
+         account_code, debit, credit, narration, bill_id, is_opening)
+      VALUES ${values}
+    `);
   }
 
   return { voucherId };

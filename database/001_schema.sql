@@ -16,6 +16,11 @@
 
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
+-- Required SET options for computed columns and filtered indexes:
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON;
 
 -- ============================================================================
 -- 1. Settings (singleton)
@@ -1574,6 +1579,17 @@ BEGIN
     )
     BEGIN
         RAISERROR('Cannot post to a group account. Only posting accounts accept ledger entries.', 16, 1);
+        ROLLBACK TRANSACTION;
+        RETURN;
+    END
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        JOIN dbo.accounts a ON a.code = i.account_code
+        WHERE a.is_active = 0
+    )
+    BEGIN
+        RAISERROR('Cannot post to an inactive account. Activate the account first.', 16, 1);
         ROLLBACK TRANSACTION;
         RETURN;
     END

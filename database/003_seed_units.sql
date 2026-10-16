@@ -5,6 +5,10 @@
 -- ============================================================================
 
 SET NOCOUNT ON;
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON;
 SET XACT_ABORT ON;
 
 IF NOT EXISTS (SELECT 1 FROM dbo.master_counter WHERE counter_type = 'UNITS')
