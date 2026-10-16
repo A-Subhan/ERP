@@ -24,6 +24,10 @@ import TaxHeads from './pages/TaxHeads';
 import Vouchers from './pages/Vouchers';
 import Reports from './pages/Reports';
 import AuditLog from './pages/AuditLog';
+import SalesDashboard from './pages/dashboards/SalesDashboard';
+import PurchaseDashboard from './pages/dashboards/PurchaseDashboard';
+import ReceivablesPayablesDashboard from './pages/dashboards/ReceivablesPayablesDashboard';
+import StockDashboard from './pages/dashboards/StockDashboard';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -80,10 +84,10 @@ export default function App() {
       <Routes>
         {/* Dashboards */}
         <Route path="/" element={<Dashboard />} />
-        <Route path="/dashboards/sales" element={<ComingSoon title="Sales Dashboard" />} />
-        <Route path="/dashboards/purchase" element={<ComingSoon title="Purchase Dashboard" />} />
-        <Route path="/dashboards/receivables-payables" element={<ComingSoon title="Receivables and Payables Dashboard" />} />
-        <Route path="/dashboards/stock" element={<ComingSoon title="Stock Dashboard" />} />
+        <Route path="/dashboards/sales" element={<SalesDashboard />} />
+        <Route path="/dashboards/purchase" element={<PurchaseDashboard />} />
+        <Route path="/dashboards/receivables-payables" element={<ReceivablesPayablesDashboard />} />
+        <Route path="/dashboards/stock" element={<StockDashboard />} />
 
         {/* Finance */}
         <Route path="/finance/cash-receipt" element={<Vouchers voucherType="CRV" />} />
