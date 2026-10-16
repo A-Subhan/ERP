@@ -7,6 +7,7 @@ import { getPool, sql, beginTx } from '../db/pool';
 import { allocateIds, formatDisplayId } from '../utils/counter';
 import { nextChildCode } from '../utils/hierarchy';
 import { audit } from '../utils/audit';
+import { seedChartOfAccounts } from './coaSeed.service';
 
 export interface SetupInput {
   companyName: string;
@@ -80,6 +81,10 @@ export async function runSetup(input: SetupInput): Promise<{ adminUserId: number
         INSERT INTO dbo.settings (id, company_name, company_id)
         VALUES (1, @cn, @cid)
       `);
+
+    // Chart of Accounts seed + default mapping — automatic, inside setup,
+    // so no SQL file has to be run by hand afterwards.
+    await seedChartOfAccounts(txc.req);
 
     const fyR = await txc.req()
       .input('name', sql.NVarChar, input.fiscalYearName)

@@ -2,6 +2,9 @@
 -- ERP Seed 002: Standard Chart of Accounts
 -- Uses accounts.code as primary key (no id column).
 -- Maps accounts in settings via *_account_code columns.
+-- NOTE: the backend now runs this seed automatically during first-time setup
+-- (Backend/src/services/coaSeed.service.ts). This file mirrors it for manual
+-- re-runs or repairs on an existing installation.
 -- ============================================================================
 
 SET NOCOUNT ON;
@@ -76,8 +79,8 @@ IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '01001002')
     VALUES ('01001002', '01001', 3, 'Banks', 'ASSET', 0, 1, 1);
 
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '01001003')
-    INSERT INTO dbo.accounts (code, parent_code, level_no, name, nature, is_group, party_type, credit_days, is_active)
-    VALUES ('01001003', '01001', 3, 'Trade Debtors', 'ASSET', 0, 'CUSTOMER', 0, 1);
+    INSERT INTO dbo.accounts (code, parent_code, level_no, name, nature, is_group, party_type, is_active)
+    VALUES ('01001003', '01001', 3, 'Trade Debtors', 'ASSET', 0, 'CUSTOMER', 1);
 
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '01001004')
     INSERT INTO dbo.accounts (code, parent_code, level_no, name, nature, is_group, is_active)
@@ -102,8 +105,8 @@ GO
 IF NOT EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1) RETURN;
 
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '02001001')
-    INSERT INTO dbo.accounts (code, parent_code, level_no, name, nature, is_group, party_type, credit_days, is_active)
-    VALUES ('02001001', '02001', 3, 'Trade Creditors', 'LIABILITY', 0, 'SUPPLIER', 0, 1);
+    INSERT INTO dbo.accounts (code, parent_code, level_no, name, nature, is_group, party_type, is_active)
+    VALUES ('02001001', '02001', 3, 'Trade Creditors', 'LIABILITY', 0, 'SUPPLIER', 1);
 
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '02001002')
     INSERT INTO dbo.accounts (code, parent_code, level_no, name, nature, is_group, is_active)
@@ -151,13 +154,11 @@ GO
 -- ----------------------------------------------------------------------------
 -- Level-3 posting accounts under Expenses
 -- ----------------------------------------------------------------------------
-<<<<<<< HEAD
 IF NOT EXISTS (SELECT 1 FROM dbo.settings WHERE id = 1) RETURN;
-=======
+
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '05001')
     INSERT INTO dbo.accounts (code, parent_code, level_no, name, nature, is_group, is_active)
     VALUES ('05001', '05', 2, 'Cost of Sales', 'EXPENSE', 1, 1);
->>>>>>> a98c2af5df3dfd92f7352d2a5b31a7bc0e1be6bb
 
 IF NOT EXISTS (SELECT 1 FROM dbo.accounts WHERE code = '05001001')
     INSERT INTO dbo.accounts (code, parent_code, level_no, name, nature, is_group, is_active)
